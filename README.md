@@ -53,19 +53,30 @@ Open `http://127.0.0.1:5173` or whatever Vite prints.
 
 ## Environment
 
-For the full map experience, add a browser Maps key to `.env`:
+For local development, copy `.env.example` to `.env`. For Vercel, add the same values in the project Environment Variables screen.
+
+Client-side keys:
 
 ```bash
 VITE_GOOGLE_MAPS_API_KEY=your_browser_maps_key_here
-```
-
-Optional:
-
-```bash
 VITE_GOOGLE_MAP_ID=your_optional_google_map_id
 ```
 
-Without a key, the app still renders its UI but the live Google map layer will not fully initialize.
+Server-side keys:
+
+```bash
+OPENAI_API_KEY=your_openai_key
+TOUR_API_KEY=your_tourapi_key
+OPENAI_MODEL=gpt-4o
+```
+
+`VITE_*` values are read at build time by the browser bundle. `OPENAI_API_KEY` and `TOUR_API_KEY` stay on the server and are used by the `/api/*` routes.
+
+Without the browser Maps key, the app still renders its UI but the live Google map layer will not fully initialize.
+
+## Vercel Deploy
+
+The repo includes `vercel.json` plus a catch-all API function so the same `/api/agent` and `/api/tour/*` endpoints work on Vercel. Use the default build command (`npm run build`) and set the environment variables above before deploying.
 
 ## Data / Privacy
 

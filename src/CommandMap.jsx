@@ -1174,6 +1174,7 @@ export default function CommandMap({
   const routeEntriesRef = useRef([])
   const markerEntriesRef = useRef([])
   const agentMarkerEntriesRef = useRef([])
+  const agentRouteEntriesRef = useRef([])
   const vehicleEntriesRef = useRef([])
   const animationFrameRef = useRef(null)
   const lastAnimationTimestampRef = useRef(null)
@@ -1191,6 +1192,7 @@ export default function CommandMap({
   const [statusDetail, setStatusDetail] = useState('Seeded trip map online. Google Maps is connecting in the background.')
   const [mapLayerCollapsed, setMapLayerCollapsed] = useState(false)
   const [weatherCollapsed, setWeatherCollapsed] = useState(false)
+  const [agentRecommendations, setAgentRecommendations] = useState([])
   const effectiveFocusDayId =
     playbackActive && mapUi.focusDayId === 'all' ? getPlaybackDayId(cursorSlot) : mapUi.focusDayId
 
@@ -1781,6 +1783,8 @@ export default function CommandMap({
         marker.setMap(null)
       })
       agentMarkerEntriesRef.current = []
+      agentRouteEntriesRef.current.forEach((polyline) => polyline.setMap(null))
+      agentRouteEntriesRef.current = []
       vehicleEntriesRef.current.forEach(({ marker, radarMarker }) => {
         googleRef.current?.maps.event.clearInstanceListeners(marker)
         radarMarker?.setMap(null)
@@ -1792,25 +1796,33 @@ export default function CommandMap({
   useEffect(() => {
     const map = mapRef.current
     const google = googleRef.current
-    if (!agentCommand || !map || !google || status !== 'ready') return
+    if (!agentCommand) return
 
     const clearAgentMarkers = () => {
+      if (!google) {
+        agentMarkerEntriesRef.current = []
+        agentRouteEntriesRef.current = []
+        return
+      }
       agentMarkerEntriesRef.current.forEach(({ marker, infoWindow }) => {
         google.maps.event.clearInstanceListeners(marker)
         infoWindow.close()
         marker.setMap(null)
       })
       agentMarkerEntriesRef.current = []
+      agentRouteEntriesRef.current.forEach((polyline) => polyline.setMap(null))
+      agentRouteEntriesRef.current = []
     }
 
     if (agentCommand.command === 'clearSearchMarkers') {
       clearAgentMarkers()
+      setAgentRecommendations([])
       return
     }
 
     if (agentCommand.command === 'setCenter') {
       const { lat, lng, level, zoom } = agentCommand.args || {}
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      if (map && Number.isFinite(lat) && Number.isFinite(lng)) {
         map.panTo({ lat, lng })
         map.setZoom(Number.isFinite(zoom) ? zoom : Number.isFinite(level) ? Math.max(3, 18 - level) : 12)
       }
@@ -1818,7 +1830,7 @@ export default function CommandMap({
     }
 
     if (agentCommand.command === 'showHeatmap') {
-      if (trafficLayerRef.current) {
+      if (map && trafficLayerRef.current) {
         trafficLayerRef.current.setMap(agentCommand.args?.visible === false ? null : map)
       }
       onUpdateMapUi?.({ showTraffic: agentCommand.args?.visible !== false })
@@ -1829,8 +1841,14 @@ export default function CommandMap({
       const category = agentCommand.args?.category || 'all'
       agentMarkerEntriesRef.current.forEach(({ marker, location }) => {
         const visible = category === 'all' || location.category === category
-        marker.setMap(visible ? map : null)
+        marker.setMap(visible && map ? map : null)
       })
+      setAgentRecommendations((current) =>
+        current.map((location) => ({
+          ...location,
+          hiddenByFilter: !(category === 'all' || location.category === category),
+        })),
+      )
       return
     }
 
@@ -1841,9 +1859,44 @@ export default function CommandMap({
       .slice(0, 12)
 
     clearAgentMarkers()
+    setAgentRecommendations(nextLocations.map((location, index) => ({ ...location, rank: index + 1, hiddenByFilter: false })))
     if (!nextLocations.length) return
+    if (!map || !google || status !== 'ready') return
 
     const bounds = new google.maps.LatLngBounds()
+    const basecamp =
+      locations.find((location) => location.id === 'jeju-basecamp' || location.id === 'pine-airbnb') ||
+      locations.find((location) => location.coordinates)
+
+    if (basecamp?.coordinates) {
+      agentRouteEntriesRef.current = nextLocations.slice(0, 5).map((location) => {
+        const polyline = new google.maps.Polyline({
+          map,
+          path: [basecamp.coordinates, location.coordinates],
+          geodesic: true,
+          strokeColor: colorForCategory(location),
+          strokeOpacity: 0.42,
+          strokeWeight: 3,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                strokeColor: '#E6EDF3',
+                strokeOpacity: 0.95,
+                strokeWeight: 1.8,
+                fillColor: colorForCategory(location),
+                fillOpacity: 0.95,
+                scale: 3.2,
+              },
+              offset: '24px',
+              repeat: '46px',
+            },
+          ],
+        })
+        return polyline
+      })
+    }
+
     agentMarkerEntriesRef.current = nextLocations.map((location, index) => {
       const marker = new google.maps.Marker({
         map,
@@ -1880,7 +1933,7 @@ export default function CommandMap({
     } else {
       map.fitBounds(bounds, 72)
     }
-  }, [agentCommand, onUpdateMapUi, status])
+  }, [agentCommand, locations, onUpdateMapUi, status])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -2645,7 +2698,8 @@ export default function CommandMap({
   const fallbackMap = useMemo(() => {
     const routePoints = routes.flatMap((route) => route.path || [])
     const locationPoints = locations.map((location) => location.coordinates).filter(Boolean)
-    const points = [...routePoints, ...locationPoints]
+    const recommendationPoints = agentRecommendations.map((location) => location.coordinates).filter(Boolean)
+    const points = [...routePoints, ...locationPoints, ...recommendationPoints]
     if (!points.length) return { bounds: null, routes: [], locations: [] }
 
     const rawBounds = points.reduce(
@@ -2683,8 +2737,19 @@ export default function CommandMap({
           category: location.category,
           point: projectFallbackMapPoint(location.coordinates, bounds),
         })),
+      recommendations: agentRecommendations
+        .filter((location) => location.coordinates && !location.hiddenByFilter)
+        .map((location) => ({
+          ...location,
+          point: projectFallbackMapPoint(location.coordinates, bounds),
+        })),
+      basecampPoint: projectFallbackMapPoint(
+        locations.find((location) => location.id === 'jeju-basecamp' || location.id === 'pine-airbnb')?.coordinates ||
+          locations.find((location) => location.coordinates)?.coordinates,
+        bounds,
+      ),
     }
-  }, [locations, routes])
+  }, [agentRecommendations, locations, routes])
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-[#080a0f]">
@@ -2695,6 +2760,9 @@ export default function CommandMap({
               <stop offset="0%" stopColor="#102034" stopOpacity="0.92" />
               <stop offset="100%" stopColor="#080a0f" stopOpacity="1" />
             </radialGradient>
+            <marker id="fallbackNavArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#E6EDF3" opacity="0.9" />
+            </marker>
           </defs>
           <rect width="100" height="100" fill="url(#fallbackMapGlow)" />
           {fallbackMap.routes.map((route) => (
@@ -2720,6 +2788,40 @@ export default function CommandMap({
               strokeOpacity="0.72"
               strokeWidth="0.18"
             />
+          ))}
+          {fallbackMap.recommendations.map((location) => (
+            <g key={`agent-route-${location.id}`}>
+              <line
+                x1={fallbackMap.basecampPoint.x}
+                y1={fallbackMap.basecampPoint.y}
+                x2={location.point.x}
+                y2={location.point.y}
+                stroke={colorForCategory(location)}
+                strokeOpacity="0.78"
+                strokeWidth="0.42"
+                strokeDasharray="1.4 1.1"
+                markerEnd="url(#fallbackNavArrow)"
+              >
+                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.1s" repeatCount="indefinite" />
+              </line>
+              <circle
+                cx={location.point.x}
+                cy={location.point.y}
+                r="1.45"
+                fill={colorForCategory(location)}
+                stroke="#E6EDF3"
+                strokeWidth="0.28"
+              />
+              <text
+                x={location.point.x + 1.8}
+                y={location.point.y - 1.4}
+                fill="#E6EDF3"
+                fontSize="2.2"
+                fontWeight="700"
+              >
+                {location.rank}
+              </text>
+            </g>
           ))}
         </svg>
       </div>
@@ -2880,6 +2982,55 @@ export default function CommandMap({
           </div>
         </div>
       )}
+
+      {agentRecommendations.length ? (
+        <div className="absolute bottom-6 left-6 z-20 w-[360px] border border-[#58A6FF]/30 bg-[#0d1117]/94 shadow-[0_18px_44px_rgba(0,0,0,0.44)] backdrop-blur">
+          <div className="flex items-center justify-between border-b border-[#58A6FF]/15 px-4 py-2.5">
+            <div>
+              <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#58A6FF]">AI Recommendations</div>
+              <div className="mt-0.5 text-[10px] text-[#8B949E]">Navigation arrows show the route from basecamp.</div>
+            </div>
+            <div className="border border-[#58A6FF]/25 bg-[#58A6FF]/10 px-2 py-0.5 text-[9px] font-black text-[#7CC0FF]">
+              {agentRecommendations.filter((item) => !item.hiddenByFilter).length}
+            </div>
+          </div>
+          <div className="max-h-[220px] overflow-y-auto">
+            {agentRecommendations.map((location) => (
+              <button
+                key={location.id}
+                type="button"
+                onClick={() => {
+                  if (mapRef.current && location.coordinates) {
+                    mapRef.current.panTo(location.coordinates)
+                    mapRef.current.setZoom(Math.max(mapRef.current.getZoom() || 0, 13))
+                  }
+                }}
+                className={`grid w-full grid-cols-[auto_1fr] gap-3 border-b border-[#30363D]/70 px-4 py-3 text-left transition-colors last:border-b-0 ${
+                  location.hiddenByFilter ? 'opacity-45' : 'hover:bg-[#161b22]'
+                }`}
+              >
+                <div
+                  className="flex h-7 w-7 items-center justify-center border text-[10px] font-black"
+                  style={{
+                    borderColor: `${colorForCategory(location)}66`,
+                    color: colorForCategory(location),
+                    backgroundColor: `${colorForCategory(location)}1A`,
+                  }}
+                >
+                  {location.rank}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-black uppercase tracking-[0.06em] text-[#C9D1D9]">{location.title}</div>
+                  <div className="mt-1 truncate text-[10px] text-[#8B949E]">{location.address || 'Address pending'}</div>
+                  <div className="mt-1 text-[9px] font-black uppercase tracking-[0.16em] text-[#58A6FF]">
+                    {location.category || 'activity'} route candidate
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

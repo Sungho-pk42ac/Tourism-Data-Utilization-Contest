@@ -36,6 +36,7 @@ import InspectorRail from './InspectorRail'
 import AgentChatPanel from './AgentChatPanel'
 import VisitorStatsPanel from './VisitorStatsPanel'
 import RecommendedRoutePanel from './RecommendedRoutePanel'
+import AttractionSearchPanel from './AttractionSearchPanel'
 import { PUBLISH_CONFIG, isLiveExternalDataEnabled } from './publishConfig'
 import { usePersistedTripState } from './usePersistedTripState'
 import { DAYS, NAV_ITEMS, TIME_SLOTS, TRIP_META } from './tripData'
@@ -840,14 +841,14 @@ function AppShell({
   children,
 }) {
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-[#0d1117] font-sans text-[#C9D1D9] antialiased">
-      <div className="flex w-16 flex-col border-r border-[#30363D] bg-[#0d1117]">
-        <div className="flex h-14 items-center justify-center border-b border-[#30363D] text-[#58A6FF]">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased">
+      <div className="flex w-16 flex-col border-r border-slate-200 bg-white shadow-sm">
+        <div className="flex h-14 items-center justify-center border-b border-slate-200 text-blue-600">
           <img
             src={palantirLogo}
             alt="Palantir"
-            className="h-4 w-auto opacity-90"
-            style={{ filter: 'invert(1) grayscale(1) brightness(1.15)' }}
+            className="h-4 w-auto opacity-80"
+            style={{ filter: 'invert(27%) sepia(90%) saturate(2000%) hue-rotate(213deg) brightness(90%)' }}
           />
         </div>
         {NAV_ITEMS.map((item) => {
@@ -861,8 +862,8 @@ function AppShell({
               className={cn(
                 'flex items-center justify-center border-l-2 px-3 py-3.5 transition-colors',
                 active
-                  ? 'border-[#58A6FF] bg-[#24313d] text-[#58A6FF]'
-                  : 'border-transparent text-[#8B949E] hover:bg-[#1f2a34] hover:text-[#C9D1D9]',
+                  ? 'border-blue-600 bg-blue-50 text-blue-600'
+                  : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600',
               )}
               title={item.label}
             >
@@ -870,25 +871,25 @@ function AppShell({
             </button>
           )
         })}
-        <div className="mt-auto border-t border-[#30363D]">
+        <div className="mt-auto border-t border-slate-200">
           <button
             type="button"
             onClick={onExport}
-            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
             title="Export trip state"
           >
             <Download size={20} strokeWidth={1.6} />
           </button>
           <button
             type="button"
-            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
             title="Messages"
           >
             <MessageSquare size={20} strokeWidth={1.6} />
           </button>
           <button
             type="button"
-            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
             title="Settings"
           >
             <Settings size={20} strokeWidth={1.6} />
@@ -897,13 +898,13 @@ function AppShell({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center justify-between border-b border-[#30363D] bg-[#161b22] px-6">
+        <div className="flex h-12 items-center justify-between border-b border-slate-200 bg-white px-6">
           <div className="flex items-center gap-6">
-            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3FB950]">
-              UNCLASSIFIED // FAMILY OPS
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">
+              한국관광데이터 활용공모전
             </div>
-            <div className="h-5 w-px bg-[#30363D]" />
-            <div className="text-[10px] font-bold uppercase tracking-widest text-[#8B949E]">
+            <div className="h-5 w-px bg-slate-200" />
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
               {TRIP_META.commandName}
             </div>
           </div>
@@ -2629,7 +2630,7 @@ function ItineraryPage({
   return (
     <>
       <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] overflow-hidden">
-        <div className="min-h-0 overflow-y-auto border-r border-[#30363D] bg-[#0d1117]">
+        <div className="min-h-0 overflow-y-auto border-r border-slate-200 bg-white">
           <div className="space-y-4 p-4">
             <SituationBoard context={context} onOpenEntity={onOpenEntity} onOpenBriefing={handleOpenBriefing} />
             <div>
@@ -3425,6 +3426,16 @@ function ActivitiesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onCo
                 onChange={(value) => onUpdatePageNote('activities', value)}
                 onConvert={() => onConvertPageNote('activities')}
                 placeholder="Capture alternate plans, micro-itineraries, weather triggers, or new activity ideas..."
+              />
+            </div>
+
+            {/* 관광지 검색 패널 */}
+            <div className="mt-5">
+              <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">
+                한국관광 검색
+              </div>
+              <AttractionSearchPanel
+                onSelectLocation={(loc) => onSelectEntity({ type: 'location', id: loc.id })}
               />
             </div>
           </>

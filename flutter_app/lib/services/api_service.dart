@@ -21,7 +21,9 @@ class ApiService {
       ).timeout(const Duration(seconds: 30));
 
       if (res.statusCode != 200) throw Exception('서버 오류: ${res.statusCode}');
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      // 서버는 { itinerary: {...}, isMock: bool } 구조로 반환
+      final data = (body['itinerary'] as Map<String, dynamic>?) ?? body;
       return TripPlan.fromJson(data);
     } catch (e) {
       // Return mock plan on network error so UI always works
@@ -69,8 +71,10 @@ class ApiService {
 
       if (res.statusCode != 200) throw Exception('API 오류');
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final result = data['result'] as List<dynamic>? ?? [];
-      return result.map((w) => WeatherDay.fromJson(w as Map<String, dynamic>)).toList();
+      final r = data['result'];
+      // 서버는 { destination, forecasts: [...] } 형태로 반환
+      final list = (r is List ? r : (r as Map?)?.values.whereType<List>().firstOrNull ?? []) as List<dynamic>;
+      return list.map((w) => WeatherDay.fromJson(w as Map<String, dynamic>)).toList();
     } catch (_) {
       return _mockWeather(days);
     }
@@ -93,8 +97,15 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 200) throw Exception('API 오류');
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      return data['result'] as Map<String, dynamic>? ?? {};
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final r = body['result'] as Map<String, dynamic>? ?? {};
+      // 서버는 grandTotal/perPersonTotal 키 사용 → Flutter 모델 키로 정규화
+      return {
+        'total': r['grandTotal'] ?? r['total'] ?? 0,
+        'perPerson': r['perPersonTotal'] ?? r['perPerson'] ?? 0,
+        'breakdown': r['breakdown'] ?? {},
+        ...r,
+      };
     } catch (_) {
       return {
         'total': days * travelers * 100000,

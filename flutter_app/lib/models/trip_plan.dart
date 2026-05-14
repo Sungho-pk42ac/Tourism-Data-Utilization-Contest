@@ -189,13 +189,14 @@ class WeatherDay {
   );
 
   String get weatherEmoji {
-    switch (condition.toLowerCase()) {
-      case 'sunny': return '☀️';
-      case 'partly_cloudy': return '⛅';
-      case 'cloudy': return '☁️';
-      case 'rainy': return '🌧️';
-      case 'stormy': return '⛈️';
-      default: return '🌤️';
-    }
+    final c = condition.toLowerCase();
+    if (c.contains('맑') || c == 'sunny' || c == 'clear') return '☀️';
+    if (c.contains('구름 조금') || c == 'partly_cloudy') return '⛅';
+    if (c.contains('구름') || c == 'cloudy') return '☁️';
+    if (c.contains('비') || c == 'rainy') return '🌧️';
+    if (c.contains('폭') || c.contains('천둥') || c == 'stormy') return '⛈️';
+    if (c.contains('눈') || c == 'snowy') return '❄️';
+    if (c.contains('안개') || c == 'foggy') return '🌫️';
+    return '🌤️';
   }
 }

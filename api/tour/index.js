@@ -102,6 +102,146 @@ function getMockLocations(keyword) {
 }
 
 /** GET /api/tour/search?keyword=성산&areaCode=39&contentTypeId=12&numOfRows=10 */
+function toRadians(value) {
+  return (value * Math.PI) / 180
+}
+
+function distanceMetersBetween(left, right) {
+  if (!left || !right) return Number.POSITIVE_INFINITY
+  const earthRadius = 6371000
+  const dLat = toRadians(right.lat - left.lat)
+  const dLng = toRadians(right.lng - left.lng)
+  const lat1 = toRadians(left.lat)
+  const lat2 = toRadians(right.lat)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function getDistanceToRouteMeters(location, route) {
+  const point = location?.coordinates
+  const path = Array.isArray(route?.path) ? route.path : []
+  if (!point || !path.length) return Number.POSITIVE_INFINITY
+  return Math.min(...path.map((routePoint) => distanceMetersBetween(point, routePoint)))
+}
+
+function getRouteSamplePoints(route) {
+  const path = Array.isArray(route?.path) ? route.path.filter((point) =>
+    Number.isFinite(point?.lat) && Number.isFinite(point?.lng),
+  ) : []
+  if (path.length <= 4) return path
+  const indexes = new Set([0, Math.floor(path.length * 0.33), Math.floor(path.length * 0.66), path.length - 1])
+  return [...indexes].map((index) => path[index]).filter(Boolean)
+}
+
+function normalizeTourItems(raw) {
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : []
+  return list
+    .map(transformItem)
+    .filter((item) => item.title && Number.isFinite(item.coordinates.lat) && Number.isFinite(item.coordinates.lng))
+}
+
+async function fetchTourItems(endpointName, params) {
+  const response = await fetch(`${TOUR_API_BASE}/${endpointName}?${params}`)
+  const data = await response.json()
+  const raw = data?.response?.body?.items?.item ?? []
+  return normalizeTourItems(raw)
+}
+
+function uniqueByContentId(items) {
+  const seen = new Set()
+  return items.filter((item) => {
+    const key = item.contentId || item.id
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function rankRouteRecommendations(items, route, keyword = '') {
+  const normalizedKeyword = String(keyword || '').trim().toLowerCase()
+  return [...items]
+    .map((item) => {
+      const haystack = `${item.title || ''} ${item.address || ''}`.toLowerCase()
+      const keywordBoost = normalizedKeyword && haystack.includes(normalizedKeyword) ? -2500 : 0
+      const routeDistanceMeters = getDistanceToRouteMeters(item, route)
+      return {
+        ...item,
+        routeDistanceMeters,
+        score: (Number.isFinite(routeDistanceMeters) ? routeDistanceMeters : 999999999) + keywordBoost,
+      }
+    })
+    .sort((left, right) => left.score - right.score)
+}
+
+router.post('/recommend', async (req, res) => {
+  const apiKey = process.env.TOUR_API_KEY
+  const {
+    keyword = '',
+    areaCode = '39',
+    contentTypeId = '',
+    numOfRows = 5,
+    route = null,
+  } = req.body || {}
+  const limit = Math.min(Math.max(Number(numOfRows) || 5, 1), 12)
+  const fallbackItems = rankRouteRecommendations(getMockLocations(keyword), route, keyword).slice(0, limit)
+
+  if (!apiKey) {
+    return res.json({ items: fallbackItems, isMock: true, source: 'mock-route-fallback' })
+  }
+
+  try {
+    const routePoints = getRouteSamplePoints(route)
+    let items = []
+
+    if (routePoints.length) {
+      const routeResults = await Promise.all(routePoints.map((point) => {
+        const params = new URLSearchParams({
+          serviceKey: apiKey,
+          numOfRows: '20',
+          pageNo: '1',
+          MobileOS: 'ETC',
+          MobileApp: 'FamilyTripKorea',
+          _type: 'json',
+          arrange: 'E',
+          mapX: String(point.lng),
+          mapY: String(point.lat),
+          radius: '12000',
+          ...(contentTypeId && { contentTypeId }),
+        })
+        return fetchTourItems('locationBasedList1', params)
+      }))
+      items = routeResults.flat()
+    }
+
+    if (!items.length) {
+      const params = new URLSearchParams({
+        serviceKey: apiKey,
+        numOfRows: String(Math.max(limit, 10)),
+        pageNo: '1',
+        MobileOS: 'ETC',
+        MobileApp: 'FamilyTripKorea',
+        _type: 'json',
+        ...(keyword && { keyword }),
+        ...(areaCode && { areaCode }),
+        ...(contentTypeId && { contentTypeId }),
+      })
+      items = await fetchTourItems(keyword ? 'searchKeyword1' : 'areaBasedList1', params)
+    }
+
+    const ranked = rankRouteRecommendations(uniqueByContentId(items), route, keyword).slice(0, limit)
+    res.json({
+      items: ranked.length ? ranked : fallbackItems,
+      isMock: !ranked.length,
+      source: ranked.length ? 'tourapi-location-route' : 'mock-route-fallback',
+    })
+  } catch (err) {
+    console.error('TourAPI recommend error:', err.message)
+    res.json({ items: fallbackItems, isMock: true, source: 'mock-route-fallback', error: err.message })
+  }
+})
+
 router.get('/search', async (req, res) => {
   const apiKey = process.env.TOUR_API_KEY
   if (!apiKey) {

@@ -1,26 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Loader2, MessageCircle, Minimize2, Send, Trash2 } from 'lucide-react'
+import { Bot, CheckCircle2, Loader2, MessageCircle, Minimize2, Send, Trash2 } from 'lucide-react'
 
 const MAX_CONTEXT_MESSAGES = 20
 const INITIAL_MESSAGE = {
   role: 'assistant',
-  content: '제주 여행지를 추천하고 Google 지도를 조정할 수 있습니다. 원하는 장소, 음식, 동선을 말해주세요.',
+  content: '제주 여행지 추천과 Google 지도 조정을 도와드립니다. 먼저 추천을 받은 뒤, 원하는 후보를 선택하면 그 항목만 일정에 반영됩니다.',
   toolCalls: [],
 }
 
 const SAMPLE_COMMANDS = [
-  '제주도 가족 여행지 5곳 추천하고 지도에 표시해줘',
-  '함덕 근처 아이와 가기 좋은 카페 찾아줘',
+  '이 루트 근처 가족 여행지 5곳 추천해줘',
+  '아이와 가기 좋은 카페를 이 루트 안에서 찾아줘',
+  '맛집 추천만 지도에 보여줘',
   '성산일출봉으로 지도 이동해줘',
-  '음식점 추천만 지도에 표시해줘',
 ]
 
 function describeToolCall(name, args = {}) {
   const map = {
-    searchAndMarkLocations: () => `"${args.keyword}" 추천지를 Google 지도에 표시`,
+    searchAndMarkLocations: () => `"${args.keyword}" 추천 후보 검색`,
     setMapCenter: () => `Google 지도 이동: ${args.lat?.toFixed?.(4)}, ${args.lng?.toFixed?.(4)}`,
     showCongestionHeatmap: () => `${args.hour}시 교통 레이어 표시`,
-    buildOptimalRoute: () => '선호 조건 기반 추천 동선 생성',
+    buildOptimalRoute: () => '선택 루트 기반 추천 후보 생성',
     filterByCategory: () => `카테고리 필터: ${args.category}`,
     clearMarkers: () => 'AI 추천 마커 초기화',
   }
@@ -28,13 +28,13 @@ function describeToolCall(name, args = {}) {
 }
 
 function textFromToolCall(tc) {
-  if (tc.name === 'buildOptimalRoute') return tc.args.preferences?.filter(Boolean).join(', ') || '제주 추천 동선'
+  if (tc.name === 'buildOptimalRoute') return tc.args.preferences?.filter(Boolean).join(', ') || '제주 추천 루트'
   return tc.args.keyword || '제주 추천 여행지'
 }
 
 function summarizeToolCalls(toolCalls = []) {
   if (toolCalls.some((tc) => tc.name === 'searchAndMarkLocations' || tc.name === 'buildOptimalRoute')) {
-    return '추천지를 Google 지도와 일정에 반영했습니다.'
+    return '추천 후보를 찾았습니다. 원하는 항목을 선택하면 일정에 반영됩니다.'
   }
   if (toolCalls.some((tc) => tc.name === 'setMapCenter')) return 'Google 지도를 요청한 위치로 이동했습니다.'
   if (toolCalls.length) return '지도 명령을 처리했습니다.'
@@ -45,7 +45,7 @@ function trimMessages(messages) {
   return [INITIAL_MESSAGE, ...messages.filter((msg) => msg !== INITIAL_MESSAGE).slice(-MAX_CONTEXT_MESSAGES)]
 }
 
-function MessageBubble({ msg }) {
+function MessageBubble({ msg, onSelectRecommendation }) {
   const isUser = msg.role === 'user'
 
   return (
@@ -55,7 +55,7 @@ function MessageBubble({ msg }) {
           <Bot className="h-3.5 w-3.5 text-[#58A6FF]" />
         </div>
       ) : null}
-      <div className="max-w-[82%] space-y-1">
+      <div className="max-w-[84%] space-y-1">
         {msg.content ? (
           <div
             className={`whitespace-pre-wrap px-3 py-2 text-xs leading-relaxed ${
@@ -65,6 +65,35 @@ function MessageBubble({ msg }) {
             }`}
           >
             {msg.content}
+          </div>
+        ) : null}
+        {msg.recommendations?.length ? (
+          <div className="space-y-1">
+            {msg.recommendations.map((location) => {
+              const selected = msg.appliedRecommendationId === location.id
+              return (
+                <button
+                  key={location.id}
+                  type="button"
+                  onClick={() => onSelectRecommendation?.(msg.id, location, msg.recommendationMeta)}
+                  disabled={Boolean(msg.appliedRecommendationId)}
+                  className={`grid w-full grid-cols-[auto_1fr_auto] items-center gap-2 border px-2 py-2 text-left transition-colors ${
+                    selected
+                      ? 'border-[#3FB950]/45 bg-[#3FB950]/10 text-[#C9D1D9]'
+                      : 'border-[#30363D] bg-[#0D1117] text-[#C9D1D9] hover:border-[#58A6FF]/45'
+                  } disabled:cursor-default disabled:opacity-80`}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center border border-[#58A6FF]/30 text-[10px] font-black text-[#58A6FF]">
+                    {location.rank}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11px] font-black">{location.title}</span>
+                    <span className="block truncate text-[10px] text-[#8B949E]">{location.address || '주소 확인 필요'}</span>
+                  </span>
+                  {selected ? <CheckCircle2 className="h-4 w-4 text-[#3FB950]" /> : null}
+                </button>
+              )
+            })}
           </div>
         ) : null}
         {msg.toolCalls?.length ? (
@@ -84,14 +113,22 @@ function MessageBubble({ msg }) {
   )
 }
 
-export default function AgentChatPanel({ onMapCommand }) {
+export default function AgentChatPanel({ onMapCommand, routeOptions = [] }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [noKey, setNoKey] = useState(false)
+  const [selectedRouteId, setSelectedRouteId] = useState(routeOptions[0]?.id || '')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const selectedRoute = routeOptions.find((route) => route.id === selectedRouteId) || routeOptions[0] || null
+
+  useEffect(() => {
+    if (!selectedRouteId && routeOptions[0]?.id) {
+      setSelectedRouteId(routeOptions[0].id)
+    }
+  }, [routeOptions, selectedRouteId])
 
   useEffect(() => {
     if (open) {
@@ -99,6 +136,31 @@ export default function AgentChatPanel({ onMapCommand }) {
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [messages, open])
+
+  const showRecommendationChoices = useCallback((locations, meta) => {
+    const choices = locations.slice(0, 5).map((location, index) => ({
+      ...location,
+      rank: index + 1,
+      routeId: meta.routeId,
+      routeTitle: meta.routeTitle,
+    }))
+
+    onMapCommand?.({ command: 'markLocations', args: { locations: choices, routeId: meta.routeId } })
+
+    setMessages((prev) => trimMessages([
+      ...prev,
+      {
+        id: `recommendation-choice-${Date.now()}`,
+        role: 'assistant',
+        content: choices.length
+          ? '어떤 추천을 선택하시겠습니까? 선택한 항목 1개만 일정에 반영됩니다.'
+          : '선택한 루트 근처에서 추천 후보를 찾지 못했습니다.',
+        toolCalls: [],
+        recommendations: choices,
+        recommendationMeta: meta,
+      },
+    ]))
+  }, [onMapCommand])
 
   const executeToolCall = useCallback(async (tc) => {
     if (!onMapCommand) return
@@ -109,25 +171,35 @@ export default function AgentChatPanel({ onMapCommand }) {
           tc.args.keyword ||
           tc.args.preferences?.filter(Boolean).join(' ') ||
           '제주 가족 여행지'
-        const params = new URLSearchParams({
-          keyword,
-          areaCode: tc.args.areaCode || '39',
-          ...(tc.args.contentTypeId && { contentTypeId: tc.args.contentTypeId }),
-          numOfRows: String(tc.args.maxCount || 5),
+        const category = tc.args.contentTypeId === '39' ? 'meal' : tc.args.contentTypeId === '32' ? 'stay' : 'activity'
+        const res = await fetch('/api/tour/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            keyword,
+            areaCode: tc.args.areaCode || '39',
+            contentTypeId: tc.args.contentTypeId || '',
+            numOfRows: tc.args.maxCount || 5,
+            route: selectedRoute,
+          }),
         })
-        const res = await fetch(`/api/tour/search?${params}`)
         const data = await res.json()
-        const locations = data.items || []
-        onMapCommand({ command: 'markLocations', args: { locations } })
-        onMapCommand({
-          command: 'applyRecommendations',
-          args: {
-            locations,
-            query: textFromToolCall(tc),
-            category: tc.args.contentTypeId === '39' ? 'meal' : tc.args.contentTypeId === '32' ? 'stay' : 'activity',
-          },
+        setNoKey(Boolean(data.isMock))
+        showRecommendationChoices(data.items || [], {
+          query: textFromToolCall(tc),
+          category,
+          routeId: selectedRoute?.id || null,
+          routeTitle: selectedRoute?.title || null,
         })
-      } catch {
+      } catch (err) {
+        setMessages((prev) => trimMessages([
+          ...prev,
+          {
+            role: 'assistant',
+            content: `추천 검색 오류: ${err.message || 'TourAPI 추천 요청을 처리하지 못했습니다.'}`,
+            toolCalls: [],
+          },
+        ]))
         onMapCommand({ command: 'markLocations', args: { locations: [] } })
       }
       return
@@ -142,6 +214,40 @@ export default function AgentChatPanel({ onMapCommand }) {
     } else if (tc.name === 'clearMarkers') {
       onMapCommand({ command: 'clearSearchMarkers', args: {} })
     }
+  }, [onMapCommand, selectedRoute, showRecommendationChoices])
+
+  const selectRecommendation = useCallback((messageId, location, meta = {}) => {
+    setMessages((prev) => trimMessages(prev.map((msg) =>
+      msg.id === messageId && !msg.appliedRecommendationId
+        ? { ...msg, appliedRecommendationId: location.id }
+        : msg,
+    )))
+
+    onMapCommand?.({
+      command: 'markLocations',
+      args: {
+        locations: [{ ...location, routeId: meta.routeId, routeTitle: meta.routeTitle }],
+        routeId: meta.routeId,
+      },
+    })
+    onMapCommand?.({
+      command: 'applyRecommendations',
+      args: {
+        locations: [{ ...location, routeId: meta.routeId, routeTitle: meta.routeTitle }],
+        query: meta.query || location.title,
+        category: meta.category || location.category || 'activity',
+        routeId: meta.routeId || null,
+      },
+    })
+
+    setMessages((prev) => trimMessages([
+      ...prev,
+      {
+        role: 'assistant',
+        content: `"${location.title}"을 선택했습니다. 이 항목만 일정과 지도 루트에 반영했습니다.`,
+        toolCalls: [],
+      },
+    ]))
   }, [onMapCommand])
 
   const sendMessage = useCallback(async () => {
@@ -161,7 +267,17 @@ export default function AgentChatPanel({ onMapCommand }) {
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({
+          message: text,
+          history,
+          routeContext: selectedRoute
+            ? {
+                id: selectedRoute.id,
+                title: selectedRoute.title,
+                dayId: selectedRoute.dayId,
+              }
+            : null,
+        }),
       })
       const data = await res.json()
 
@@ -192,7 +308,7 @@ export default function AgentChatPanel({ onMapCommand }) {
     } finally {
       setLoading(false)
     }
-  }, [executeToolCall, input, loading, messages])
+  }, [executeToolCall, input, loading, messages, selectedRoute])
 
   const resetConversation = () => {
     setMessages([INITIAL_MESSAGE])
@@ -215,15 +331,15 @@ export default function AgentChatPanel({ onMapCommand }) {
   }
 
   return (
-    <section className="flex h-[460px] w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border border-[#30363D] bg-[#0D1117] shadow-[0_20px_60px_rgba(0,0,0,0.42)]">
+    <section className="flex h-[520px] w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border border-[#30363D] bg-[#0D1117] shadow-[0_20px_60px_rgba(0,0,0,0.42)]">
       <header className="flex items-center justify-between border-b border-[#30363D] bg-[#161B22] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Bot className="h-4 w-4 shrink-0 text-[#58A6FF]" />
           <div className="min-w-0">
             <div className="truncate text-xs font-black uppercase text-[#C9D1D9]">AI Travel Guide</div>
-            <div className="text-[10px] text-[#8B949E]">Google Maps control · last 20 messages</div>
+            <div className="text-[10px] text-[#8B949E]">Route scoped recommendations</div>
           </div>
-          {noKey ? <span className="border border-[#D29922]/40 px-1.5 py-0.5 text-[9px] text-[#D29922]">NO KEY</span> : null}
+          {noKey ? <span className="border border-[#D29922]/40 px-1.5 py-0.5 text-[9px] text-[#D29922]">MOCK</span> : null}
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={resetConversation} className="p-1.5 text-[#8B949E] hover:text-[#C9D1D9]" aria-label="대화 초기화">
@@ -236,7 +352,13 @@ export default function AgentChatPanel({ onMapCommand }) {
       </header>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.map((msg, index) => <MessageBubble key={`${msg.role}-${index}`} msg={msg} />)}
+        {messages.map((msg, index) => (
+          <MessageBubble
+            key={msg.id || `${msg.role}-${index}`}
+            msg={msg}
+            onSelectRecommendation={selectRecommendation}
+          />
+        ))}
         {loading ? (
           <div className="flex items-center gap-2 text-xs text-[#8B949E]">
             <Loader2 className="h-4 w-4 animate-spin text-[#58A6FF]" />
@@ -247,6 +369,22 @@ export default function AgentChatPanel({ onMapCommand }) {
       </div>
 
       <div className="border-t border-[#30363D] p-3">
+        {routeOptions.length ? (
+          <label className="mb-2 block">
+            <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.18em] text-[#8B949E]">Route Scope</span>
+            <select
+              value={selectedRoute?.id || ''}
+              onChange={(event) => setSelectedRouteId(event.target.value)}
+              className="w-full border border-[#30363D] bg-[#080A0F] px-2 py-1.5 text-xs text-[#C9D1D9] focus:border-[#58A6FF]/70 focus:outline-none"
+            >
+              {routeOptions.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="mb-2 flex flex-wrap gap-1">
           {SAMPLE_COMMANDS.map((cmd) => (
             <button
@@ -256,7 +394,7 @@ export default function AgentChatPanel({ onMapCommand }) {
                 setInput(cmd)
                 inputRef.current?.focus()
               }}
-              className="max-w-[160px] truncate border border-[#30363D] bg-[#161B22] px-2 py-1 text-[10px] text-[#8B949E] hover:border-[#58A6FF]/40 hover:text-[#C9D1D9]"
+              className="max-w-[170px] truncate border border-[#30363D] bg-[#161B22] px-2 py-1 text-[10px] text-[#8B949E] hover:border-[#58A6FF]/40 hover:text-[#C9D1D9]"
               title={cmd}
             >
               {cmd}

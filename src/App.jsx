@@ -555,6 +555,25 @@ function formatNameList(labels) {
   return `${cleanLabels.slice(0, -1).join(', ')} + ${cleanLabels[cleanLabels.length - 1]}`
 }
 
+function distanceMetersBetween(left, right) {
+  if (!left || !right) return Infinity
+  const toRadians = (value) => (value * Math.PI) / 180
+  const earthRadiusMeters = 6371000
+  const dLat = toRadians(right.lat - left.lat)
+  const dLng = toRadians(right.lng - left.lng)
+  const lat1 = toRadians(left.lat)
+  const lat2 = toRadians(right.lat)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function getDistanceToRouteMeters(location, route) {
+  if (!location?.coordinates || !route?.path?.length) return Infinity
+  return Math.min(...route.path.map((point) => distanceMetersBetween(location.coordinates, point)))
+}
+
 function stripDayPrefix(label) {
   return (label || '').replace(/^[A-Za-z]{3}\s+/, '')
 }
@@ -2703,6 +2722,12 @@ function ItineraryPage({
             {/* AI 에이전트 채팅 패널 — 오른쪽 하단 플로팅 컨트롤 */}
             <div className="fixed bottom-4 right-4 z-50">
               <AgentChatPanel
+                routeOptions={doc.routes.map((route) => ({
+                  id: route.id,
+                  title: route.title,
+                  dayId: route.dayId,
+                  path: route.path,
+                }))}
                 onMapCommand={(cmd) => {
                   if (cmd.command === 'applyRecommendations') {
                     onApplyAgentRecommendations?.(cmd.args)
@@ -4711,19 +4736,27 @@ function App() {
     }))
   }
 
-  const applyAgentRecommendations = useCallback(({ locations = [], query = '', category = 'activity' } = {}) => {
-    const recommendedLocations = locations
-      .filter((location) => location?.id && location?.title && location?.coordinates)
-      .slice(0, 3)
-
-    if (!recommendedLocations.length) return
-
+  const applyAgentRecommendations = useCallback(({ locations = [], query = '', category = 'activity', routeId = null } = {}) => {
     setDoc((current) => {
+      const scopedRoute = current.routes.find((route) => route.id === routeId) || null
+      const recommendedLocations = locations
+        .filter((location) => location?.id && location?.title && location?.coordinates)
+        .map((location) => ({
+          ...location,
+          routeId: scopedRoute?.id || null,
+          routeTitle: scopedRoute?.title || null,
+          routeDistanceMeters: scopedRoute ? getDistanceToRouteMeters(location, scopedRoute) : 0,
+        }))
+        .sort((left, right) => left.routeDistanceMeters - right.routeDistanceMeters)
+        .slice(0, 3)
+
+      if (!recommendedLocations.length) return current
+
       const existingLocationIds = new Set(current.locations.map((location) => location.id))
       const existingActivityIds = new Set(current.activities.map((activity) => activity.id))
       const existingItineraryIds = new Set(current.itineraryItems.map((item) => item.id))
       const aiItemCount = current.itineraryItems.filter((item) => item.id.startsWith('ai-plan-')).length
-      const dayId = query.includes('일요일') || query.toLowerCase().includes('sun') ? 'sun' : 'sat'
+      const dayId = scopedRoute?.dayId || (query.includes('일요일') || query.toLowerCase().includes('sun') ? 'sun' : 'sat')
       const dayBaseSlot = dayId === 'sun' ? 8.25 : 5.0
       const timestamp = Date.now()
 
@@ -4736,6 +4769,8 @@ function App() {
             type: 'location',
             category: location.category || category || 'activity',
             summary: location.summary || `AI 추천: ${query || '제주 여행지'}`,
+            routeId: scopedRoute?.id || null,
+            routeTitle: scopedRoute?.title || null,
             externalUrl:
               location.externalUrl ||
               `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.title)}`,
@@ -4769,7 +4804,7 @@ function App() {
             locationId: location.id,
             linkedEntityKeys: [makeEntityKey('location', location.id)],
             taskIds: [],
-            description: `${query || 'AI 추천'} 요청으로 추가된 후보지입니다. 주소: ${location.address || '확인 필요'}`,
+            description: `${query || 'AI 추천'} 요청으로 추가된 ${scopedRoute?.title ? `"${scopedRoute.title}" 루트 내 ` : ''}후보지입니다. 주소: ${location.address || '확인 필요'}`,
             backup: '현장 혼잡도나 이동 시간이 맞지 않으면 다음 추천지로 대체.',
             note: 'AI 채팅에서 실시간 추가됨.',
           }, currentFamilyId))
@@ -4790,7 +4825,7 @@ function App() {
             riskLevel: 'Low',
             linkedEntityKeys: [makeEntityKey('activity', activityId), makeEntityKey('location', location.id)],
             taskIds: [],
-            note: `AI 추천 반영: ${query || location.title}`,
+            note: `AI 추천 반영: ${query || location.title}${scopedRoute?.title ? ` / 루트: ${scopedRoute.title}` : ''}`,
           }, currentFamilyId))
         }
 

@@ -1193,6 +1193,8 @@ export default function CommandMap({
   const [mapLayerCollapsed, setMapLayerCollapsed] = useState(false)
   const [weatherCollapsed, setWeatherCollapsed] = useState(false)
   const [agentRecommendations, setAgentRecommendations] = useState([])
+  const [agentRecommendationsCollapsed, setAgentRecommendationsCollapsed] = useState(false)
+  const [selectedAgentRecommendationId, setSelectedAgentRecommendationId] = useState(null)
   const effectiveFocusDayId =
     playbackActive && mapUi.focusDayId === 'all' ? getPlaybackDayId(cursorSlot) : mapUi.focusDayId
 
@@ -1471,10 +1473,13 @@ export default function CommandMap({
             icons: [
               {
                 icon: {
-                  path: 'M 0,-1 0,1',
+                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                   strokeOpacity: route.tone === 'muted' ? 0.45 : 0.55,
                   strokeColor: TONE_COLORS[route.tone],
-                  scale: route.tone === 'muted' ? 2.5 : 3,
+                  strokeWeight: 1.7,
+                  fillColor: TONE_COLORS[route.tone],
+                  fillOpacity: route.tone === 'muted' ? 0.36 : 0.56,
+                  scale: route.tone === 'muted' ? 2.2 : 2.7,
                 },
                 offset: '0%',
                 repeat: route.dashed ? '18px' : '14px',
@@ -1783,7 +1788,7 @@ export default function CommandMap({
         marker.setMap(null)
       })
       agentMarkerEntriesRef.current = []
-      agentRouteEntriesRef.current.forEach((polyline) => polyline.setMap(null))
+      agentRouteEntriesRef.current.forEach((entry) => entry.polyline?.setMap(null))
       agentRouteEntriesRef.current = []
       vehicleEntriesRef.current.forEach(({ marker, radarMarker }) => {
         googleRef.current?.maps.event.clearInstanceListeners(marker)
@@ -1810,13 +1815,14 @@ export default function CommandMap({
         marker.setMap(null)
       })
       agentMarkerEntriesRef.current = []
-      agentRouteEntriesRef.current.forEach((polyline) => polyline.setMap(null))
+      agentRouteEntriesRef.current.forEach((entry) => entry.polyline?.setMap(null))
       agentRouteEntriesRef.current = []
     }
 
     if (agentCommand.command === 'clearSearchMarkers') {
       clearAgentMarkers()
       setAgentRecommendations([])
+      setSelectedAgentRecommendationId(null)
       return
     }
 
@@ -1860,22 +1866,29 @@ export default function CommandMap({
 
     clearAgentMarkers()
     setAgentRecommendations(nextLocations.map((location, index) => ({ ...location, rank: index + 1, hiddenByFilter: false })))
+    setSelectedAgentRecommendationId(nextLocations[0]?.id || null)
     if (!nextLocations.length) return
     if (!map || !google || status !== 'ready') return
 
     const bounds = new google.maps.LatLngBounds()
+    const selectedRoute = routes.find((route) => route.id === agentCommand.args?.routeId) || null
     const basecamp =
-      locations.find((location) => location.id === 'jeju-basecamp' || location.id === 'pine-airbnb') ||
-      locations.find((location) => location.coordinates)
+      selectedRoute?.path?.[0]
+        ? { coordinates: selectedRoute.path[0] }
+        : locations.find((location) => location.id === 'jeju-basecamp' || location.id === 'pine-airbnb') ||
+          locations.find((location) => location.coordinates)
 
     if (basecamp?.coordinates) {
       agentRouteEntriesRef.current = nextLocations.slice(0, 5).map((location) => {
+        const navPath = selectedRoute?.path?.length
+          ? [...selectedRoute.path, location.coordinates]
+          : [basecamp.coordinates, location.coordinates]
         const polyline = new google.maps.Polyline({
           map,
-          path: [basecamp.coordinates, location.coordinates],
+          path: navPath,
           geodesic: true,
           strokeColor: colorForCategory(location),
-          strokeOpacity: 0.42,
+          strokeOpacity: 0.72,
           strokeWeight: 3,
           icons: [
             {
@@ -1888,12 +1901,11 @@ export default function CommandMap({
                 fillOpacity: 0.95,
                 scale: 3.2,
               },
-              offset: '24px',
-              repeat: '46px',
+              offset: '0%',
             },
           ],
         })
-        return polyline
+        return { polyline, offset: 0, loopDurationSeconds: 6 + Math.min(navPath.length, 6) }
       })
     }
 
@@ -1933,7 +1945,7 @@ export default function CommandMap({
     } else {
       map.fitBounds(bounds, 72)
     }
-  }, [agentCommand, locations, onUpdateMapUi, status])
+  }, [agentCommand, locations, onUpdateMapUi, routes, status])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -2056,6 +2068,15 @@ export default function CommandMap({
         entry.offset = (entry.offset + distancePercent) % 100
         icons[0].offset = `${entry.offset}%`
         entry.animatedPolyline.set('icons', icons)
+      })
+
+      agentRouteEntriesRef.current.forEach((entry) => {
+        if (!entry.polyline?.getMap()) return
+        const icons = entry.polyline.get('icons')
+        if (!icons?.length) return
+        entry.offset = (entry.offset + (deltaSeconds / entry.loopDurationSeconds) * 100) % 100
+        icons[0].offset = `${entry.offset}%`
+        entry.polyline.set('icons', icons)
       })
 
       vehicleEntriesRef.current.forEach((entry) => {
@@ -2232,6 +2253,12 @@ export default function CommandMap({
         icons[0].icon = {
           ...icons[0].icon,
           strokeColor: TONE_COLORS[route.tone] || TONE_COLORS.info,
+          strokeWeight: 1.7,
+          fillColor: TONE_COLORS[route.tone] || TONE_COLORS.info,
+          fillOpacity:
+            entry.routeSource === 'directions'
+              ? emphasized ? 0.82 : 0.36
+              : route.tone === 'muted' ? (emphasized ? 0.62 : 0.34) : emphasized ? 0.9 : 0.52,
           strokeOpacity:
             entry.routeSource === 'directions'
               ? emphasized ? 0.72 : 0.3
@@ -2741,6 +2768,10 @@ export default function CommandMap({
         .filter((location) => location.coordinates && !location.hiddenByFilter)
         .map((location) => ({
           ...location,
+          navPoints: [
+            ...((routes.find((route) => route.id === location.routeId)?.path) || []),
+            location.coordinates,
+          ].map((point) => projectFallbackMapPoint(point, bounds)),
           point: projectFallbackMapPoint(location.coordinates, bounds),
         })),
       basecampPoint: projectFallbackMapPoint(
@@ -2791,19 +2822,18 @@ export default function CommandMap({
           ))}
           {fallbackMap.recommendations.map((location) => (
             <g key={`agent-route-${location.id}`}>
-              <line
-                x1={fallbackMap.basecampPoint.x}
-                y1={fallbackMap.basecampPoint.y}
-                x2={location.point.x}
-                y2={location.point.y}
+              <polyline
+                points={(location.navPoints?.length ? location.navPoints : [fallbackMap.basecampPoint, location.point])
+                  .map((point) => `${point.x},${point.y}`)
+                  .join(' ')}
+                fill="none"
                 stroke={colorForCategory(location)}
-                strokeOpacity="0.78"
-                strokeWidth="0.42"
-                strokeDasharray="1.4 1.1"
+                strokeOpacity="0.82"
+                strokeWidth="0.48"
                 markerEnd="url(#fallbackNavArrow)"
               >
-                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.1s" repeatCount="indefinite" />
-              </line>
+                <animate attributeName="stroke-opacity" values="0.45;0.95;0.45" dur="1.2s" repeatCount="indefinite" />
+              </polyline>
               <circle
                 cx={location.point.x}
                 cy={location.point.y}
@@ -2988,25 +3018,40 @@ export default function CommandMap({
           <div className="flex items-center justify-between border-b border-[#58A6FF]/15 px-4 py-2.5">
             <div>
               <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#58A6FF]">AI Recommendations</div>
-              <div className="mt-0.5 text-[10px] text-[#8B949E]">Navigation arrows show the route from basecamp.</div>
+              <div className="mt-0.5 text-[10px] text-[#8B949E]">Solid route line with the moving arrow as current position.</div>
             </div>
-            <div className="border border-[#58A6FF]/25 bg-[#58A6FF]/10 px-2 py-0.5 text-[9px] font-black text-[#7CC0FF]">
-              {agentRecommendations.filter((item) => !item.hiddenByFilter).length}
+            <div className="flex items-center gap-2">
+              <div className="border border-[#58A6FF]/25 bg-[#58A6FF]/10 px-2 py-0.5 text-[9px] font-black text-[#7CC0FF]">
+                {agentRecommendations.filter((item) => !item.hiddenByFilter).length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setAgentRecommendationsCollapsed((current) => !current)}
+                className="p-1 text-[#8B949E] hover:text-[#C9D1D9]"
+                aria-label={agentRecommendationsCollapsed ? 'AI 추천 펼치기' : 'AI 추천 접기'}
+              >
+                {agentRecommendationsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
             </div>
           </div>
-          <div className="max-h-[220px] overflow-y-auto">
+          {!agentRecommendationsCollapsed ? <div className="max-h-[220px] overflow-y-auto">
             {agentRecommendations.map((location) => (
               <button
                 key={location.id}
                 type="button"
                 onClick={() => {
+                  setSelectedAgentRecommendationId(location.id)
                   if (mapRef.current && location.coordinates) {
                     mapRef.current.panTo(location.coordinates)
                     mapRef.current.setZoom(Math.max(mapRef.current.getZoom() || 0, 13))
                   }
                 }}
                 className={`grid w-full grid-cols-[auto_1fr] gap-3 border-b border-[#30363D]/70 px-4 py-3 text-left transition-colors last:border-b-0 ${
-                  location.hiddenByFilter ? 'opacity-45' : 'hover:bg-[#161b22]'
+                  selectedAgentRecommendationId === location.id
+                    ? 'border-l-2 border-l-[#58A6FF] bg-[#24313d]/55'
+                    : location.hiddenByFilter
+                      ? 'opacity-45'
+                      : 'hover:bg-[#161b22]'
                 }`}
               >
                 <div
@@ -3023,12 +3068,12 @@ export default function CommandMap({
                   <div className="truncate text-[12px] font-black uppercase tracking-[0.06em] text-[#C9D1D9]">{location.title}</div>
                   <div className="mt-1 truncate text-[10px] text-[#8B949E]">{location.address || 'Address pending'}</div>
                   <div className="mt-1 text-[9px] font-black uppercase tracking-[0.16em] text-[#58A6FF]">
-                    {location.category || 'activity'} route candidate
+                    {location.routeTitle || 'Selected route'} / {location.category || 'activity'}
                   </div>
                 </div>
               </button>
             ))}
-          </div>
+          </div> : null}
         </div>
       ) : null}
     </div>

@@ -142,7 +142,7 @@ TourAPI 지역 코드:
 router.post('/', async (req, res) => {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   const model = process.env.OPENAI_MODEL || 'gpt-4o'
-  const { message, history = [] } = req.body
+  const { message, history = [], routeContext = null } = req.body
 
   if (!message?.trim()) {
     return res.status(400).json({ error: '메시지가 필요합니다.' })
@@ -186,6 +186,12 @@ router.post('/', async (req, res) => {
 
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
+      ...(routeContext?.title
+        ? [{
+            role: 'system',
+            content: `현재 사용자가 선택한 추천 범위는 "${routeContext.title}" 루트입니다. 모든 추천은 이 루트의 동선과 날짜(${routeContext.dayId || 'unknown'}) 안에서 벗어나지 않도록 하세요.`,
+          }]
+        : []),
       ...safeHistory,
       { role: 'user', content: message.trim() },
     ]

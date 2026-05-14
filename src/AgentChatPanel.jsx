@@ -15,6 +15,44 @@ const SAMPLE_COMMANDS = [
   '성산일출봉으로 지도 이동해줘',
 ]
 
+const CLIENT_FALLBACK_LOCATIONS = [
+  {
+    id: 'fallback-seongsan',
+    title: '성산일출봉',
+    address: '제주 서귀포시 성산읍 성산리',
+    coordinates: { lat: 33.4588, lng: 126.9425 },
+    category: 'activity',
+  },
+  {
+    id: 'fallback-hamdeok',
+    title: '함덕해수욕장',
+    address: '제주 제주시 조천읍 함덕리',
+    coordinates: { lat: 33.5432, lng: 126.6698 },
+    category: 'activity',
+  },
+  {
+    id: 'fallback-dongmun',
+    title: '동문재래시장',
+    address: '제주 제주시 관덕로14길 20',
+    coordinates: { lat: 33.5135, lng: 126.5248 },
+    category: 'meal',
+  },
+  {
+    id: 'fallback-hallasan',
+    title: '한라산국립공원',
+    address: '제주 제주시 1100로',
+    coordinates: { lat: 33.3617, lng: 126.5292 },
+    category: 'activity',
+  },
+  {
+    id: 'fallback-jungmun',
+    title: '중문관광단지',
+    address: '제주 서귀포시 중문관광로',
+    coordinates: { lat: 33.2491, lng: 126.4122 },
+    category: 'activity',
+  },
+]
+
 function describeToolCall(name, args = {}) {
   const map = {
     searchAndMarkLocations: () => `"${args.keyword}" 추천 후보 검색`,
@@ -43,6 +81,37 @@ function summarizeToolCalls(toolCalls = []) {
 
 function trimMessages(messages) {
   return [INITIAL_MESSAGE, ...messages.filter((msg) => msg !== INITIAL_MESSAGE).slice(-MAX_CONTEXT_MESSAGES)]
+}
+
+async function readJsonResponse(response) {
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    const preview = (await response.text()).slice(0, 80)
+    throw new Error(`API 서버가 JSON이 아닌 응답을 반환했습니다: ${preview}`)
+  }
+  return response.json()
+}
+
+function getClientFallbackRecommendations(keyword = '', category = 'activity') {
+  const normalizedKeyword = String(keyword || '').toLowerCase()
+  const normalizedCategory = category === 'meal' ? 'meal' : category === 'stay' ? 'stay' : ''
+  const matched = CLIENT_FALLBACK_LOCATIONS.filter((location) => {
+    const text = `${location.title} ${location.address}`.toLowerCase()
+    const keywordMatch = !normalizedKeyword || text.includes(normalizedKeyword) || normalizedKeyword.includes('가족')
+    const categoryMatch = !normalizedCategory || location.category === normalizedCategory
+    return keywordMatch && categoryMatch
+  })
+  return matched.length ? matched : CLIENT_FALLBACK_LOCATIONS
+}
+
+function inferCategoryFromText(text = '') {
+  if (/맛집|음식|식당|카페|먹/.test(text)) return 'meal'
+  if (/숙소|호텔|펜션|리조트/.test(text)) return 'stay'
+  return 'activity'
+}
+
+function isRecommendationRequest(text = '') {
+  return /추천|찾아|코스|여행지|맛집|카페|관광/.test(text)
 }
 
 function MessageBubble({ msg, onSelectRecommendation }) {
@@ -183,7 +252,7 @@ export default function AgentChatPanel({ onMapCommand, routeOptions = [] }) {
             route: selectedRoute,
           }),
         })
-        const data = await res.json()
+        const data = await readJsonResponse(res)
         setNoKey(Boolean(data.isMock))
         showRecommendationChoices(data.items || [], {
           query: textFromToolCall(tc),
@@ -192,15 +261,14 @@ export default function AgentChatPanel({ onMapCommand, routeOptions = [] }) {
           routeTitle: selectedRoute?.title || null,
         })
       } catch (err) {
-        setMessages((prev) => trimMessages([
-          ...prev,
-          {
-            role: 'assistant',
-            content: `추천 검색 오류: ${err.message || 'TourAPI 추천 요청을 처리하지 못했습니다.'}`,
-            toolCalls: [],
-          },
-        ]))
-        onMapCommand({ command: 'markLocations', args: { locations: [] } })
+        console.warn('[AgentChatPanel] Tour recommendation fallback:', err)
+        setNoKey(true)
+        showRecommendationChoices(getClientFallbackRecommendations(keyword, category), {
+          query: textFromToolCall(tc),
+          category,
+          routeId: selectedRoute?.id || null,
+          routeTitle: selectedRoute?.title || null,
+        })
       }
       return
     }
@@ -279,7 +347,7 @@ export default function AgentChatPanel({ onMapCommand, routeOptions = [] }) {
             : null,
         }),
       })
-      const data = await res.json()
+      const data = await readJsonResponse(res)
 
       if (!res.ok || data.error) {
         throw new Error(data.details || data.error || 'AI 응답을 가져오지 못했습니다.')
@@ -297,6 +365,18 @@ export default function AgentChatPanel({ onMapCommand, routeOptions = [] }) {
         await executeToolCall(tc)
       }
     } catch (err) {
+      if (isRecommendationRequest(text)) {
+        const category = inferCategoryFromText(text)
+        setNoKey(true)
+        showRecommendationChoices(getClientFallbackRecommendations(text, category), {
+          query: text,
+          category,
+          routeId: selectedRoute?.id || null,
+          routeTitle: selectedRoute?.title || null,
+        })
+        setLoading(false)
+        return
+      }
       setMessages((prev) => trimMessages([
         ...prev,
         {

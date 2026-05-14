@@ -1482,7 +1482,6 @@ export default function CommandMap({
                   scale: route.tone === 'muted' ? 2.2 : 2.7,
                 },
                 offset: '0%',
-                repeat: route.dashed ? '18px' : '14px',
               },
             ],
           })
@@ -2268,10 +2267,7 @@ export default function CommandMap({
               ? emphasized ? 3.1 : 2.4
               : route.tone === 'muted' ? (emphasized ? 2.9 : 2.3) : emphasized ? 3.6 : 3,
         }
-        icons[0].repeat =
-          entry.routeSource === 'directions'
-            ? emphasized ? '18px' : '22px'
-            : emphasized ? '12px' : route.dashed ? '18px' : '15px'
+        delete icons[0].repeat
         animatedPolyline.set('icons', icons)
       }
 

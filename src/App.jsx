@@ -33,6 +33,9 @@ import { twMerge } from 'tailwind-merge'
 import palantirLogo from './assets/palantir-logo.svg'
 import KakaoMap from './KakaoMap'
 import InspectorRail from './InspectorRail'
+import AgentChatPanel from './AgentChatPanel'
+import VisitorStatsPanel from './VisitorStatsPanel'
+import RecommendedRoutePanel from './RecommendedRoutePanel'
 import { PUBLISH_CONFIG, isLiveExternalDataEnabled } from './publishConfig'
 import { usePersistedTripState } from './usePersistedTripState'
 import { DAYS, NAV_ITEMS, TIME_SLOTS, TRIP_META } from './tripData'
@@ -2289,6 +2292,9 @@ function ItineraryPage({
   mapWeatherTargets,
 }) {
   const [briefingOpen, setBriefingOpen] = useState(false)
+  const [agentMapCommands, setAgentMapCommands] = useState(null)
+  const [showStatsPanel, setShowStatsPanel] = useState(false)
+  const [showRoutePanel, setShowRoutePanel] = useState(false)
   const [playbackCursorSlot, setPlaybackCursorSlot] = useState(null)
   const [isPlaybackPlaying, setIsPlaybackPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
@@ -2642,6 +2648,44 @@ function ItineraryPage({
                 placeholder="Add a planning note..."
               />
             </div>
+
+            {/* 방문객 통계 패널 토글 */}
+            <div>
+              <button
+                onClick={() => setShowStatsPanel((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+              >
+                <span>📊 방문객 통계</span>
+                <span className="text-blue-400">{showStatsPanel ? '▲' : '▼'}</span>
+              </button>
+              {showStatsPanel && (
+                <div className="mt-2">
+                  <VisitorStatsPanel
+                    areaCode="39"
+                    onClose={() => setShowStatsPanel(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 추천 동선 패널 토글 */}
+            <div>
+              <button
+                onClick={() => setShowRoutePanel((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
+              >
+                <span>🗺️ 추천 동선 엔진</span>
+                <span className="text-green-400">{showRoutePanel ? '▲' : '▼'}</span>
+              </button>
+              {showRoutePanel && (
+                <div className="mt-2">
+                  <RecommendedRoutePanel
+                    tripDocument={doc}
+                    onSelectLocation={(loc) => onSelectEntity({ type: 'location', id: loc.id })}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -2655,11 +2699,18 @@ function ItineraryPage({
               isPlayingBack={isPlaybackPlaying}
               onSelectEntity={onSelectEntity}
               onSelectLocation={(location) => onSelectEntity({ type: 'location', id: location.id })}
+              agentMapCommands={agentMapCommands}
             />
             <MissionFeedTray
               items={renderedMissionFeedItems}
               onActivateItem={handleMissionFeedActivate}
             />
+            {/* AI 에이전트 채팅 패널 — 지도 우측 하단 오버레이 */}
+            <div className="absolute bottom-4 right-3 z-20 w-80">
+              <AgentChatPanel
+                onMapCommand={(cmd) => setAgentMapCommands({ ...cmd, _ts: Date.now() })}
+              />
+            </div>
           </div>
           <div className="min-w-0 shrink-0">
             <TimelineBoard

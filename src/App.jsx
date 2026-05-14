@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import {
   ArrowRight,
   CarFront,
@@ -32,7 +31,7 @@ import {
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import palantirLogo from './assets/palantir-logo.svg'
-import CommandMap from './CommandMap'
+import KakaoMap from './KakaoMap'
 import InspectorRail from './InspectorRail'
 import { PUBLISH_CONFIG, isLiveExternalDataEnabled } from './publishConfig'
 import { usePersistedTripState } from './usePersistedTripState'
@@ -2648,25 +2647,14 @@ function ItineraryPage({
 
         <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
           <div className="relative min-h-0 min-w-0 overflow-hidden">
-            <CommandMap
-              locations={doc.locations}
-              routes={doc.routes}
-              families={doc.families}
-              itineraryItems={doc.itineraryItems}
-              meals={doc.meals}
-              activities={doc.activities}
+            <KakaoMap
+              tripDocument={doc}
+              currentSelection={selection}
+              focusDayId={getCursorDay(effectiveCursorSlot)?.id || 'all'}
               cursorSlot={effectiveCursorSlot}
-              mapUi={doc.ui.map}
-              mapWeather={mapWeather}
-              mapWeatherTargets={mapWeatherTargets}
-              selectedLocationId={getLocationForEntity(doc, getEntityBySelection(doc, selection))?.id || null}
-              selectedRouteId={getRouteForEntity(doc, getEntityBySelection(doc, selection))?.id || null}
-              playbackActive={isPlaybackPlaying}
-              playbackHighlightLocationId={playbackHighlightLocationId}
-              onUpdateMapUi={onUpdateMapUi}
-              onHydrateRouteDetails={onHydrateRouteDetails}
+              isPlayingBack={isPlaybackPlaying}
               onSelectEntity={onSelectEntity}
-              onPlaybackFeedItems={handlePlaybackFeedItems}
+              onSelectLocation={(location) => onSelectEntity({ type: 'location', id: location.id })}
             />
             <MissionFeedTray
               items={renderedMissionFeedItems}
@@ -4268,9 +4256,11 @@ function App() {
     })
   }, [currentFamilyId, setDoc])
 
+  // Google Maps Places/Directions hydration 제거 (카카오지도로 교체됨)
+
   useEffect(() => {
     if (!liveExternalData) return
-    if (!GOOGLE_MAPS_API_KEY) return
+    if (true) return // Google Maps API 비활성화
 
     const basecampLocation = doc.locations.find((location) => location.id === 'pine-airbnb')
     const pendingPlaceLocations = doc.locations.filter((location) => {

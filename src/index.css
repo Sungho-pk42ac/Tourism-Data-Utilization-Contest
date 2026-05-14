@@ -1,40 +1,33 @@
 @import "tailwindcss";
 
-/* 공공기관 친화적 라이트 테마 */
 @theme {
-  --color-background:     #F8FAFC;
-  --color-surface:        #FFFFFF;
-  --color-surface-raised: #F1F5F9;
-  --color-muted:          #64748B;
-  --color-primary:        #1E293B;
-  --color-border:         #E2E8F0;
-  --color-critical:       #DC2626;
-  --color-warning:        #D97706;
-  --color-success:        #059669;
-  --color-info:           #1D4ED8;
-  --color-accent:         #1D4ED8;
-  --color-accent-soft:    #EFF6FF;
+  --color-background: #0A0C10;
+  --color-surface: #161B22;
+  --color-muted: #8B949E;
+  --color-primary: #C9D1D9;
+  --color-border: #30363D;
+  --color-critical: #F85149;
+  --color-warning: #D29922;
+  --color-success: #3FB950;
+  --color-info: #58A6FF;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
 }
 
 :root {
-  --background:     #F8FAFC;
-  --surface:        #FFFFFF;
-  --surface-raised: #F1F5F9;
-  --primary:        #1E293B;
-  --muted:          #64748B;
-  --border:         #E2E8F0;
-  --critical:       #DC2626;
-  --warning:        #D97706;
-  --success:        #059669;
-  --info:           #1D4ED8;
-  --accent:         #1D4ED8;
-  --accent-soft:    #EFF6FF;
+  --background: #0A0C10;
+  --surface: #161B22;
+  --primary: #C9D1D9;
+  --muted: #8B949E;
+  --border: #30363D;
+  --critical: #F85149;
+  --warning: #D29922;
+  --success: #3FB950;
+  --info: #58A6FF;
 }
 
 body {
@@ -46,16 +39,16 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface-raised);
+  background: var(--background);
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {

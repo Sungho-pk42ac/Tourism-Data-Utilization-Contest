@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import {
   ArrowRight,
   CarFront,
@@ -31,11 +32,10 @@ import {
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import palantirLogo from './assets/palantir-logo.svg'
-import KakaoMap from './KakaoMap'
+import CommandMap from './CommandMap'
 import InspectorRail from './InspectorRail'
 import AgentChatPanel from './AgentChatPanel'
 import VisitorStatsPanel from './VisitorStatsPanel'
-import RecommendedRoutePanel from './RecommendedRoutePanel'
 import AttractionSearchPanel from './AttractionSearchPanel'
 import { PUBLISH_CONFIG, isLiveExternalDataEnabled } from './publishConfig'
 import { usePersistedTripState } from './usePersistedTripState'
@@ -74,7 +74,8 @@ import { fetchWeatherBundle, getMapWeather, getMapWeatherTargets, getTripDayWeat
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 const GOOGLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID
-const SKIP_DEPRECATED_GOOGLE_ROUTING_IN_DEV = import.meta.env.VITE_DISABLE_LEGACY_GOOGLE_ROUTING === 'true'
+const SKIP_DEPRECATED_GOOGLE_ROUTING_IN_DEV =
+  import.meta.env.VITE_DISABLE_LEGACY_GOOGLE_ROUTING === 'true' || Boolean(import.meta.env?.DEV)
 const SKIP_DEPRECATED_GOOGLE_PLACES_IN_DEV = Boolean(import.meta.env?.DEV)
 
 function cn(...inputs) {
@@ -841,14 +842,14 @@ function AppShell({
   children,
 }) {
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased">
-      <div className="flex w-16 flex-col border-r border-slate-200 bg-white shadow-sm">
-        <div className="flex h-14 items-center justify-center border-b border-slate-200 text-blue-600">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-[#0d1117] font-sans text-[#C9D1D9] antialiased">
+      <div className="flex w-16 flex-col border-r border-[#30363D] bg-[#0d1117]">
+        <div className="flex h-14 items-center justify-center border-b border-[#30363D] text-[#58A6FF]">
           <img
             src={palantirLogo}
             alt="Palantir"
-            className="h-4 w-auto opacity-80"
-            style={{ filter: 'invert(27%) sepia(90%) saturate(2000%) hue-rotate(213deg) brightness(90%)' }}
+            className="h-4 w-auto opacity-90"
+            style={{ filter: 'invert(1) grayscale(1) brightness(1.15)' }}
           />
         </div>
         {NAV_ITEMS.map((item) => {
@@ -862,8 +863,8 @@ function AppShell({
               className={cn(
                 'flex items-center justify-center border-l-2 px-3 py-3.5 transition-colors',
                 active
-                  ? 'border-blue-600 bg-blue-50 text-blue-600'
-                  : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600',
+                  ? 'border-[#58A6FF] bg-[#24313d] text-[#58A6FF]'
+                  : 'border-transparent text-[#8B949E] hover:bg-[#1f2a34] hover:text-[#C9D1D9]',
               )}
               title={item.label}
             >
@@ -871,25 +872,25 @@ function AppShell({
             </button>
           )
         })}
-        <div className="mt-auto border-t border-slate-200">
+        <div className="mt-auto border-t border-[#30363D]">
           <button
             type="button"
             onClick={onExport}
-            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
             title="Export trip state"
           >
             <Download size={20} strokeWidth={1.6} />
           </button>
           <button
             type="button"
-            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
             title="Messages"
           >
             <MessageSquare size={20} strokeWidth={1.6} />
           </button>
           <button
             type="button"
-            className="flex w-full items-center justify-center px-3 py-3.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+            className="flex w-full items-center justify-center px-3 py-3.5 text-[#8B949E] transition-colors hover:bg-[#1f2a34] hover:text-[#C9D1D9]"
             title="Settings"
           >
             <Settings size={20} strokeWidth={1.6} />
@@ -898,13 +899,13 @@ function AppShell({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center justify-between border-b border-slate-200 bg-white px-6">
+        <div className="flex h-12 items-center justify-between border-b border-[#30363D] bg-[#161b22] px-6">
           <div className="flex items-center gap-6">
-            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">
-              한국관광데이터 활용공모전
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3FB950]">
+              UNCLASSIFIED // FAMILY OPS
             </div>
-            <div className="h-5 w-px bg-slate-200" />
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <div className="h-5 w-px bg-[#30363D]" />
+            <div className="text-[10px] font-bold uppercase tracking-widest text-[#8B949E]">
               {TRIP_META.commandName}
             </div>
           </div>
@@ -2286,6 +2287,7 @@ function ItineraryPage({
   onSetCursor,
   onUpdateMapUi,
   onHydrateRouteDetails,
+  onApplyAgentRecommendations,
   onUpdatePageNote,
   onConvertPageNote,
   weatherDays,
@@ -2295,7 +2297,6 @@ function ItineraryPage({
   const [briefingOpen, setBriefingOpen] = useState(false)
   const [agentMapCommands, setAgentMapCommands] = useState(null)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
-  const [showRoutePanel, setShowRoutePanel] = useState(false)
   const [playbackCursorSlot, setPlaybackCursorSlot] = useState(null)
   const [isPlaybackPlaying, setIsPlaybackPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
@@ -2630,7 +2631,7 @@ function ItineraryPage({
   return (
     <>
       <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] overflow-hidden">
-        <div className="min-h-0 overflow-y-auto border-r border-slate-200 bg-white">
+        <div className="min-h-0 overflow-y-auto border-r border-[#30363D] bg-[#0d1117]">
           <div className="space-y-4 p-4">
             <SituationBoard context={context} onOpenEntity={onOpenEntity} onOpenBriefing={handleOpenBriefing} />
             <div>
@@ -2669,47 +2670,46 @@ function ItineraryPage({
               )}
             </div>
 
-            {/* 추천 동선 패널 토글 */}
-            <div>
-              <button
-                onClick={() => setShowRoutePanel((v) => !v)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
-              >
-                <span>🗺️ 추천 동선 엔진</span>
-                <span className="text-green-400">{showRoutePanel ? '▲' : '▼'}</span>
-              </button>
-              {showRoutePanel && (
-                <div className="mt-2">
-                  <RecommendedRoutePanel
-                    tripDocument={doc}
-                    onSelectLocation={(loc) => onSelectEntity({ type: 'location', id: loc.id })}
-                  />
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
         <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
           <div className="relative min-h-0 min-w-0 overflow-hidden">
-            <KakaoMap
-              tripDocument={doc}
-              currentSelection={selection}
-              focusDayId={getCursorDay(effectiveCursorSlot)?.id || 'all'}
+            <CommandMap
+              locations={doc.locations}
+              routes={doc.routes}
+              families={doc.families}
+              itineraryItems={doc.itineraryItems}
+              meals={doc.meals}
+              activities={doc.activities}
               cursorSlot={effectiveCursorSlot}
-              isPlayingBack={isPlaybackPlaying}
+              mapUi={doc.ui.map}
+              mapWeather={mapWeather}
+              mapWeatherTargets={mapWeatherTargets}
+              selectedLocationId={getLocationForEntity(doc, getEntityBySelection(doc, selection))?.id || null}
+              selectedRouteId={getRouteForEntity(doc, getEntityBySelection(doc, selection))?.id || null}
+              playbackActive={isPlaybackPlaying}
+              playbackHighlightLocationId={playbackHighlightLocationId}
+              agentCommand={agentMapCommands}
+              onUpdateMapUi={onUpdateMapUi}
+              onHydrateRouteDetails={onHydrateRouteDetails}
               onSelectEntity={onSelectEntity}
-              onSelectLocation={(location) => onSelectEntity({ type: 'location', id: location.id })}
-              agentMapCommands={agentMapCommands}
+              onPlaybackFeedItems={handlePlaybackFeedItems}
             />
             <MissionFeedTray
               items={renderedMissionFeedItems}
               onActivateItem={handleMissionFeedActivate}
             />
-            {/* AI 에이전트 채팅 패널 — 지도 우측 하단 오버레이 */}
-            <div className="absolute bottom-4 right-3 z-20 w-80">
+            {/* AI 에이전트 채팅 패널 — 오른쪽 하단 플로팅 컨트롤 */}
+            <div className="fixed bottom-4 right-4 z-50">
               <AgentChatPanel
-                onMapCommand={(cmd) => setAgentMapCommands({ ...cmd, _ts: Date.now() })}
+                onMapCommand={(cmd) => {
+                  if (cmd.command === 'applyRecommendations') {
+                    onApplyAgentRecommendations?.(cmd.args)
+                    return
+                  }
+                  setAgentMapCommands({ ...cmd, _ts: Date.now() })
+                }}
               />
             </div>
           </div>
@@ -4318,11 +4318,9 @@ function App() {
     })
   }, [currentFamilyId, setDoc])
 
-  // Google Maps Places/Directions hydration 제거 (카카오지도로 교체됨)
-
   useEffect(() => {
     if (!liveExternalData) return
-    if (true) return // Google Maps API 비활성화
+    if (!GOOGLE_MAPS_API_KEY) return
 
     const basecampLocation = doc.locations.find((location) => location.id === 'pine-airbnb')
     const pendingPlaceLocations = doc.locations.filter((location) => {
@@ -4340,6 +4338,7 @@ function App() {
     })
 
     if (!pendingPlaceLocations.length) return
+    if (SKIP_DEPRECATED_GOOGLE_PLACES_IN_DEV && SKIP_DEPRECATED_GOOGLE_ROUTING_IN_DEV) return
 
     let cancelled = false
 
@@ -4712,6 +4711,114 @@ function App() {
     }))
   }
 
+  const applyAgentRecommendations = useCallback(({ locations = [], query = '', category = 'activity' } = {}) => {
+    const recommendedLocations = locations
+      .filter((location) => location?.id && location?.title && location?.coordinates)
+      .slice(0, 3)
+
+    if (!recommendedLocations.length) return
+
+    setDoc((current) => {
+      const existingLocationIds = new Set(current.locations.map((location) => location.id))
+      const existingActivityIds = new Set(current.activities.map((activity) => activity.id))
+      const existingItineraryIds = new Set(current.itineraryItems.map((item) => item.id))
+      const aiItemCount = current.itineraryItems.filter((item) => item.id.startsWith('ai-plan-')).length
+      const dayId = query.includes('일요일') || query.toLowerCase().includes('sun') ? 'sun' : 'sat'
+      const dayBaseSlot = dayId === 'sun' ? 8.25 : 5.0
+      const timestamp = Date.now()
+
+      const nextLocations = [
+        ...current.locations,
+        ...recommendedLocations
+          .filter((location) => !existingLocationIds.has(location.id))
+          .map((location) => ({
+            ...location,
+            type: 'location',
+            category: location.category || category || 'activity',
+            summary: location.summary || `AI 추천: ${query || '제주 여행지'}`,
+            externalUrl:
+              location.externalUrl ||
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.title)}`,
+            linkedEntityKeys: [],
+            taskIds: [],
+            note: 'AI 채팅 추천으로 추가됨.',
+          })),
+      ]
+
+      const nextActivities = [...current.activities]
+      const nextItineraryItems = [...current.itineraryItems]
+      let selectedRecommendation = null
+
+      recommendedLocations.forEach((location, index) => {
+        const activityId = `ai-activity-${location.id}`
+        const itineraryId = `ai-plan-${location.id}`
+        const startSlot = dayBaseSlot + (aiItemCount + index) * 0.42
+        const locationCategory = location.category || category || 'activity'
+        const titlePrefix = locationCategory === 'meal' ? 'AI 추천 식사' : locationCategory === 'stay' ? 'AI 추천 숙소 검토' : 'AI 추천 코스'
+
+        if (!existingActivityIds.has(activityId)) {
+          nextActivities.push(stampFamilyMetadata({
+            id: activityId,
+            type: 'activity',
+            title: `${titlePrefix}: ${location.title}`,
+            dayId,
+            window: `${getDayMeta(dayId)?.shortLabel || dayId} / AI 추천`,
+            status: 'Pending',
+            riskLevel: 'Low',
+            weatherSensitivity: 'Low',
+            locationId: location.id,
+            linkedEntityKeys: [makeEntityKey('location', location.id)],
+            taskIds: [],
+            description: `${query || 'AI 추천'} 요청으로 추가된 후보지입니다. 주소: ${location.address || '확인 필요'}`,
+            backup: '현장 혼잡도나 이동 시간이 맞지 않으면 다음 추천지로 대체.',
+            note: 'AI 채팅에서 실시간 추가됨.',
+          }, currentFamilyId))
+        }
+
+        if (!existingItineraryIds.has(itineraryId)) {
+          nextItineraryItems.push(stampFamilyMetadata({
+            id: itineraryId,
+            type: 'itineraryItem',
+            title: `${location.title} 검토`,
+            rowId: 'activities',
+            dayId,
+            startSlot,
+            span: 0.35,
+            color: locationCategory === 'meal' ? 'warning' : 'info',
+            locationId: location.id,
+            status: 'AI 추천',
+            riskLevel: 'Low',
+            linkedEntityKeys: [makeEntityKey('activity', activityId), makeEntityKey('location', location.id)],
+            taskIds: [],
+            note: `AI 추천 반영: ${query || location.title}`,
+          }, currentFamilyId))
+        }
+
+        if (!selectedRecommendation) selectedRecommendation = { type: 'itineraryItem', id: itineraryId }
+      })
+
+      return {
+        ...current,
+        selectedPage: 'itinerary',
+        selection: selectedRecommendation || current.selection,
+        locations: nextLocations,
+        activities: nextActivities,
+        itineraryItems: nextItineraryItems,
+        ui: {
+          ...current.ui,
+          timeline: {
+            ...current.ui.timeline,
+            cursorSlot: recommendedLocations.length ? dayBaseSlot : current.ui.timeline.cursorSlot,
+          },
+          map: {
+            ...current.ui.map,
+            focusDayId: dayId,
+          },
+        },
+      }
+    })
+  }, [currentFamilyId, setDoc])
+
   const convertNoteToTask = (entityType, entityId) => {
     const entity = getEntityById(doc, entityType, entityId)
     if (!entity?.note?.trim()) return
@@ -4925,6 +5032,7 @@ function App() {
         onSetCursor={setTimelineCursor}
         onUpdateMapUi={updateMapUi}
         onHydrateRouteDetails={hydrateRouteDetails}
+        onApplyAgentRecommendations={applyAgentRecommendations}
         weatherDays={timelineWeatherDays}
         mapWeather={mapWeather}
         mapWeatherTargets={mapWeatherTargets}

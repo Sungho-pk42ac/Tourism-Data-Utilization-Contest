@@ -97,7 +97,8 @@ function getMockLocations(keyword) {
     },
   ]
   if (!keyword) return mocks
-  return mocks.filter((m) => m.title.includes(keyword) || m.address.includes(keyword))
+  const matched = mocks.filter((m) => m.title.includes(keyword) || m.address.includes(keyword))
+  return matched.length ? matched : mocks
 }
 
 /** GET /api/tour/search?keyword=성산&areaCode=39&contentTypeId=12&numOfRows=10 */
@@ -128,9 +129,9 @@ router.get('/search', async (req, res) => {
     const response = await fetch(`${endpoint}?${params}`)
     const data = await response.json()
     const raw = data?.response?.body?.items?.item ?? []
-    const items = Array.isArray(raw) ? raw.map(transformItem) : [transformItem(raw)]
+    const items = Array.isArray(raw) ? raw.map(transformItem) : raw ? [transformItem(raw)] : []
 
-    res.json({ items, isMock: false })
+    res.json({ items: items.length ? items : getMockLocations(keyword), isMock: !items.length })
   } catch (err) {
     console.error('TourAPI 검색 오류:', err.message)
     res.json({ items: getMockLocations(keyword), isMock: true, error: err.message })

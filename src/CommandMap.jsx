@@ -38,7 +38,8 @@ const SPEED_REDUCTION_FACTOR = 0.75
 const MIN_ROUTE_LOOP_SECONDS = 16
 const MAX_ROUTE_LOOP_SECONDS = 34
 const LIVE_EXTERNAL_DATA = isLiveExternalDataEnabled()
-const SKIP_DEPRECATED_GOOGLE_ROUTING_IN_DEV = import.meta.env.VITE_DISABLE_LEGACY_GOOGLE_ROUTING === 'true'
+const SKIP_DEPRECATED_GOOGLE_ROUTING_IN_DEV =
+  import.meta.env.VITE_DISABLE_LEGACY_GOOGLE_ROUTING === 'true' || Boolean(import.meta.env?.DEV)
 const SKIP_DEPRECATED_GOOGLE_PLACES_IN_DEV = Boolean(import.meta.env?.DEV)
 const WEATHER_ICONS = {
   sun: Sun,
@@ -1149,6 +1150,7 @@ export default function CommandMap({
   selectedRouteId,
   playbackActive = false,
   playbackHighlightLocationId = null,
+  agentCommand = null,
   onUpdateMapUi,
   onHydrateLocationDetails,
   onHydrateRouteDetails,
@@ -1161,6 +1163,7 @@ export default function CommandMap({
   const trafficLayerRef = useRef(null)
   const routeEntriesRef = useRef([])
   const markerEntriesRef = useRef([])
+  const agentMarkerEntriesRef = useRef([])
   const vehicleEntriesRef = useRef([])
   const animationFrameRef = useRef(null)
   const lastAnimationTimestampRef = useRef(null)
@@ -1431,7 +1434,7 @@ export default function CommandMap({
         }
         mapRef.current = map
         trafficLayerRef.current = new google.maps.TrafficLayer()
-        if (LIVE_EXTERNAL_DATA) {
+        if (LIVE_EXTERNAL_DATA && !SKIP_DEPRECATED_GOOGLE_PLACES_IN_DEV) {
           await importLibrary('places')
         }
 
@@ -1622,6 +1625,15 @@ export default function CommandMap({
           }
         })
 
+        setStatus('ready')
+        setStatusDetail(
+          GOOGLE_MAP_ID
+            ? 'Cloud-styled Google Map online'
+            : LIVE_EXTERNAL_DATA
+              ? 'Map online. External venue intel refreshes in the background.'
+              : 'Seeded demo map online with bundled route intel',
+        )
+
         const basecampLocation = initialLocations.find((location) => location.id === 'pine-airbnb')
 
         for (const entry of markerEntriesRef.current) {
@@ -1753,6 +1765,12 @@ export default function CommandMap({
         pulseMarker?.setMap(null)
         marker.setMap(null)
       })
+      agentMarkerEntriesRef.current.forEach(({ marker, infoWindow }) => {
+        googleRef.current?.maps.event.clearInstanceListeners(marker)
+        infoWindow.close()
+        marker.setMap(null)
+      })
+      agentMarkerEntriesRef.current = []
       vehicleEntriesRef.current.forEach(({ marker, radarMarker }) => {
         googleRef.current?.maps.event.clearInstanceListeners(marker)
         radarMarker?.setMap(null)
@@ -1760,6 +1778,99 @@ export default function CommandMap({
       })
     }
   }, [onHydrateLocationDetails, onHydrateRouteDetails, onSelectEntity])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const google = googleRef.current
+    if (!agentCommand || !map || !google || status !== 'ready') return
+
+    const clearAgentMarkers = () => {
+      agentMarkerEntriesRef.current.forEach(({ marker, infoWindow }) => {
+        google.maps.event.clearInstanceListeners(marker)
+        infoWindow.close()
+        marker.setMap(null)
+      })
+      agentMarkerEntriesRef.current = []
+    }
+
+    if (agentCommand.command === 'clearSearchMarkers') {
+      clearAgentMarkers()
+      return
+    }
+
+    if (agentCommand.command === 'setCenter') {
+      const { lat, lng, level, zoom } = agentCommand.args || {}
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        map.panTo({ lat, lng })
+        map.setZoom(Number.isFinite(zoom) ? zoom : Number.isFinite(level) ? Math.max(3, 18 - level) : 12)
+      }
+      return
+    }
+
+    if (agentCommand.command === 'showHeatmap') {
+      if (trafficLayerRef.current) {
+        trafficLayerRef.current.setMap(agentCommand.args?.visible === false ? null : map)
+      }
+      onUpdateMapUi?.({ showTraffic: agentCommand.args?.visible !== false })
+      return
+    }
+
+    if (agentCommand.command === 'filterByCategory') {
+      const category = agentCommand.args?.category || 'all'
+      agentMarkerEntriesRef.current.forEach(({ marker, location }) => {
+        const visible = category === 'all' || location.category === category
+        marker.setMap(visible ? map : null)
+      })
+      return
+    }
+
+    if (agentCommand.command !== 'markLocations') return
+
+    const nextLocations = (agentCommand.args?.locations || [])
+      .filter((location) => Number.isFinite(location?.coordinates?.lat) && Number.isFinite(location?.coordinates?.lng))
+      .slice(0, 12)
+
+    clearAgentMarkers()
+    if (!nextLocations.length) return
+
+    const bounds = new google.maps.LatLngBounds()
+    agentMarkerEntriesRef.current = nextLocations.map((location, index) => {
+      const marker = new google.maps.Marker({
+        map,
+        position: location.coordinates,
+        title: location.title,
+        zIndex: 80 + index,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: colorForCategory(location),
+          fillOpacity: 0.86,
+          strokeColor: '#E6EDF3',
+          strokeWeight: 1.5,
+          scale: 6.5,
+        },
+      })
+      const infoWindow = new google.maps.InfoWindow({
+        content: buildLocationBriefingContent({
+          ...location,
+          summary: location.summary || 'AI 추천 여행지입니다. 동선과 혼잡도를 함께 확인하세요.',
+          externalUrl:
+            location.externalUrl ||
+            `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.title || '')}`,
+        }),
+      })
+
+      marker.addListener('click', () => infoWindow.open({ map, anchor: marker }))
+      bounds.extend(location.coordinates)
+      return { location, marker, infoWindow }
+    })
+
+    if (nextLocations.length === 1) {
+      map.panTo(nextLocations[0].coordinates)
+      map.setZoom(13)
+    } else {
+      map.fitBounds(bounds, 72)
+    }
+  }, [agentCommand, onUpdateMapUi, status])
 
   useEffect(() => {
     if (status !== 'ready') return

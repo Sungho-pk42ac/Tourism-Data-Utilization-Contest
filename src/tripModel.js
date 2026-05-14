@@ -35,12 +35,12 @@ const PUBLIC_BASECAMP_COORDINATES = { lat: 33.4996, lng: 126.5312 }
 
 const MAPS_LINKS = {
   airbnb: TRIP_META.airbnb.url,
-  seongsanIlchulbong: 'https://map.kakao.com/?q=성산일출봉',
-  dongmunMarket: 'https://map.kakao.com/?q=제주+동문시장',
-  blackPork: 'https://map.kakao.com/?q=제주+흑돼지+맛집',
-  haenyeoVillage: 'https://map.kakao.com/?q=성산+해녀촌',
-  jungmunResort: 'https://map.kakao.com/?q=중문관광단지',
-  hamdeokBeach: 'https://map.kakao.com/?q=함덕해수욕장',
+  seongsanIlchulbong: 'https://www.google.com/maps/search/?api=1&query=성산일출봉',
+  dongmunMarket: 'https://www.google.com/maps/search/?api=1&query=제주+동문시장',
+  blackPork: 'https://www.google.com/maps/search/?api=1&query=제주+흑돼지+맛집',
+  haenyeoVillage: 'https://www.google.com/maps/search/?api=1&query=성산+해녀촌',
+  jungmunResort: 'https://www.google.com/maps/search/?api=1&query=중문관광단지',
+  hamdeokBeach: 'https://www.google.com/maps/search/?api=1&query=함덕해수욕장',
 }
 
 const SHARED_CONVOY_WINDOWS = {

@@ -1,120 +1,144 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, ChevronDown, ChevronUp, Loader2, Send, X } from 'lucide-react'
+import { Bot, Loader2, MessageCircle, Minimize2, Send, Trash2 } from 'lucide-react'
 
-/** AI 에이전트 tool_call → 사람이 읽을 수 있는 설명 변환 */
-function describeToolCall(name, args) {
-  const map = {
-    searchAndMarkLocations: () => `🔍 "${args.keyword}" 검색 중${args.areaCode ? ` (지역코드: ${args.areaCode})` : ''}`,
-    setMapCenter:           () => `📍 지도 이동: (${args.lat?.toFixed(4)}, ${args.lng?.toFixed(4)})`,
-    showCongestionHeatmap:  () => `🌡️ ${args.hour}시 혼잡도 히트맵 표시`,
-    buildOptimalRoute:      () => `🗺️ 최적 경로 생성${args.availableHours ? ` (${args.availableHours}시간)` : ''}`,
-    filterByCategory:       () => `🏷️ 카테고리 필터: ${args.category}`,
-    clearMarkers:           () => '🗑️ 마커 초기화',
-  }
-  return map[name]?.() || `⚙️ ${name}`
+const MAX_CONTEXT_MESSAGES = 20
+const INITIAL_MESSAGE = {
+  role: 'assistant',
+  content: '제주 여행지를 추천하고 Google 지도를 조정할 수 있습니다. 원하는 장소, 음식, 동선을 말해주세요.',
+  toolCalls: [],
 }
 
-/** 단일 메시지 버블 */
+const SAMPLE_COMMANDS = [
+  '제주도 가족 여행지 5곳 추천하고 지도에 표시해줘',
+  '함덕 근처 아이와 가기 좋은 카페 찾아줘',
+  '성산일출봉으로 지도 이동해줘',
+  '음식점 추천만 지도에 표시해줘',
+]
+
+function describeToolCall(name, args = {}) {
+  const map = {
+    searchAndMarkLocations: () => `"${args.keyword}" 추천지를 Google 지도에 표시`,
+    setMapCenter: () => `Google 지도 이동: ${args.lat?.toFixed?.(4)}, ${args.lng?.toFixed?.(4)}`,
+    showCongestionHeatmap: () => `${args.hour}시 교통 레이어 표시`,
+    buildOptimalRoute: () => '선호 조건 기반 추천 동선 생성',
+    filterByCategory: () => `카테고리 필터: ${args.category}`,
+    clearMarkers: () => 'AI 추천 마커 초기화',
+  }
+  return map[name]?.() || name
+}
+
+function textFromToolCall(tc) {
+  if (tc.name === 'buildOptimalRoute') return tc.args.preferences?.filter(Boolean).join(', ') || '제주 추천 동선'
+  return tc.args.keyword || '제주 추천 여행지'
+}
+
+function summarizeToolCalls(toolCalls = []) {
+  if (toolCalls.some((tc) => tc.name === 'searchAndMarkLocations' || tc.name === 'buildOptimalRoute')) {
+    return '추천지를 Google 지도와 일정에 반영했습니다.'
+  }
+  if (toolCalls.some((tc) => tc.name === 'setMapCenter')) return 'Google 지도를 요청한 위치로 이동했습니다.'
+  if (toolCalls.length) return '지도 명령을 처리했습니다.'
+  return '요청을 처리했습니다.'
+}
+
+function trimMessages(messages) {
+  return [INITIAL_MESSAGE, ...messages.filter((msg) => msg !== INITIAL_MESSAGE).slice(-MAX_CONTEXT_MESSAGES)]
+}
+
 function MessageBubble({ msg }) {
   const isUser = msg.role === 'user'
-  const isSystem = msg.role === 'system'
-
-  if (isSystem) {
-    return (
-      <div className="flex justify-center">
-        <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-          {msg.content}
-        </span>
-      </div>
-    )
-  }
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} gap-2`}>
-      {!isUser && (
-        <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-          <Bot className="w-3.5 h-3.5 text-white" />
+      {!isUser ? (
+        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border border-[#58A6FF]/40 bg-[#58A6FF]/15">
+          <Bot className="h-3.5 w-3.5 text-[#58A6FF]" />
         </div>
-      )}
-      <div className={`max-w-[80%] space-y-1`}>
-        {/* 텍스트 응답 */}
-        {msg.content && (
-          <div className={`
-            text-xs px-3 py-2 rounded-lg leading-relaxed
-            ${isUser
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-100 text-slate-700 border border-slate-200'}
-          `}>
+      ) : null}
+      <div className="max-w-[82%] space-y-1">
+        {msg.content ? (
+          <div
+            className={`whitespace-pre-wrap px-3 py-2 text-xs leading-relaxed ${
+              isUser
+                ? 'bg-[#58A6FF] text-[#0D1117]'
+                : 'border border-[#30363D] bg-[#161B22] text-[#C9D1D9]'
+            }`}
+          >
             {msg.content}
           </div>
-        )}
-        {/* 실행된 도구 목록 */}
-        {msg.toolCalls?.length > 0 && (
-          <div className="space-y-0.5">
+        ) : null}
+        {msg.toolCalls?.length ? (
+          <div className="space-y-1">
             {msg.toolCalls.map((tc) => (
-              <div key={tc.id} className="text-[10px] text-slate-500 bg-blue-50 border border-blue-100 px-2 py-1 rounded flex items-center gap-1.5">
-                <span className="text-blue-400">›</span>
+              <div
+                key={tc.id}
+                className="border border-[#58A6FF]/25 bg-[#58A6FF]/10 px-2 py-1 text-[10px] leading-snug text-[#8B949E]"
+              >
                 {describeToolCall(tc.name, tc.args)}
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
 }
 
-/** 예시 명령어 버튼 */
-const SAMPLE_COMMANDS = [
-  '제주도 혼잡도 낮은 카페 3곳 지도에 표시해줘',
-  '오늘 오후 2시 기준 최적 경로 만들어줘',
-  '성산일출봉 지도에서 보여줘',
-  '서귀포 숙박 검색해줘',
-]
-
 export default function AgentChatPanel({ onMapCommand }) {
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: '안녕하세요! 제주도 가족여행 AI 가이드입니다. 자연어로 지도 명령을 내려보세요.',
-      toolCalls: [],
-    },
-  ])
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
   const [noKey, setNoKey] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
-  const historyRef = useRef([])
 
-  // 새 메시지 시 스크롤
   useEffect(() => {
-    if (!collapsed) {
+    if (open) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }, [messages, collapsed])
+  }, [messages, open])
 
-  /** TourAPI 검색 후 마커 표시 — tool_call 후처리 */
   const executeToolCall = useCallback(async (tc) => {
     if (!onMapCommand) return
 
-    if (tc.name === 'searchAndMarkLocations') {
+    if (tc.name === 'searchAndMarkLocations' || tc.name === 'buildOptimalRoute') {
       try {
+        const keyword =
+          tc.args.keyword ||
+          tc.args.preferences?.filter(Boolean).join(' ') ||
+          '제주 가족 여행지'
         const params = new URLSearchParams({
-          keyword: tc.args.keyword || '',
-          ...(tc.args.areaCode && { areaCode: tc.args.areaCode }),
+          keyword,
+          areaCode: tc.args.areaCode || '39',
           ...(tc.args.contentTypeId && { contentTypeId: tc.args.contentTypeId }),
           numOfRows: String(tc.args.maxCount || 5),
         })
         const res = await fetch(`/api/tour/search?${params}`)
         const data = await res.json()
-        onMapCommand({ command: 'markLocations', args: { locations: data.items || [] } })
-      } catch (_) { /* 무시 */ }
-    } else if (tc.name === 'setMapCenter') {
+        const locations = data.items || []
+        onMapCommand({ command: 'markLocations', args: { locations } })
+        onMapCommand({
+          command: 'applyRecommendations',
+          args: {
+            locations,
+            query: textFromToolCall(tc),
+            category: tc.args.contentTypeId === '39' ? 'meal' : tc.args.contentTypeId === '32' ? 'stay' : 'activity',
+          },
+        })
+      } catch {
+        onMapCommand({ command: 'markLocations', args: { locations: [] } })
+      }
+      return
+    }
+
+    if (tc.name === 'setMapCenter') {
       onMapCommand({ command: 'setCenter', args: tc.args })
     } else if (tc.name === 'showCongestionHeatmap') {
       onMapCommand({ command: 'showHeatmap', args: tc.args })
+    } else if (tc.name === 'filterByCategory') {
+      onMapCommand({ command: 'filterByCategory', args: tc.args })
     } else if (tc.name === 'clearMarkers') {
       onMapCommand({ command: 'clearSearchMarkers', args: {} })
     }
@@ -124,155 +148,148 @@ export default function AgentChatPanel({ onMapCommand }) {
     const text = input.trim()
     if (!text || loading) return
 
+    const history = messages
+      .filter((msg) => ['user', 'assistant'].includes(msg.role) && msg.content)
+      .slice(-MAX_CONTEXT_MESSAGES)
+      .map(({ role, content }) => ({ role, content }))
+
     setInput('')
     setLoading(true)
-
-    const userMsg = { role: 'user', content: text, toolCalls: [] }
-    setMessages((prev) => [...prev, userMsg])
-
-    // history에 추가 (system/assistant 형식으로)
-    historyRef.current = [
-      ...historyRef.current,
-      { role: 'user', content: text },
-    ]
+    setMessages((prev) => trimMessages([...prev, { role: 'user', content: text, toolCalls: [] }]))
 
     try {
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: historyRef.current.slice(-10),
-        }),
+        body: JSON.stringify({ message: text, history }),
       })
       const data = await res.json()
 
-      if (data.error) {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: `오류: ${data.error}`, toolCalls: [] },
-        ])
-        setLoading(false)
-        return
+      if (!res.ok || data.error) {
+        throw new Error(data.details || data.error || 'AI 응답을 가져오지 못했습니다.')
       }
 
-      if (data.isMock) {
-        setNoKey(true)
-      }
-
+      setNoKey(Boolean(data.isMock))
       const assistantMsg = {
         role: 'assistant',
-        content: data.reply,
+        content: data.reply || summarizeToolCalls(data.toolCalls),
         toolCalls: data.toolCalls || [],
       }
-      setMessages((prev) => [...prev, assistantMsg])
+      setMessages((prev) => trimMessages([...prev, assistantMsg]))
 
-      historyRef.current = [
-        ...historyRef.current,
-        { role: 'assistant', content: data.reply || '' },
-      ]
-
-      // 지도 명령 실행
       for (const tc of data.toolCalls || []) {
         await executeToolCall(tc)
       }
     } catch (err) {
-      setMessages((prev) => [
+      setMessages((prev) => trimMessages([
         ...prev,
-        { role: 'assistant', content: '네트워크 오류가 발생했습니다. API 서버가 실행 중인지 확인해주세요.', toolCalls: [] },
-      ])
+        {
+          role: 'assistant',
+          content: `연결 오류: ${err.message || 'API 서버가 실행 중인지 확인해주세요. npm run server 또는 npm run dev:all을 사용하세요.'}`,
+          toolCalls: [],
+        },
+      ]))
+    } finally {
+      setLoading(false)
     }
+  }, [executeToolCall, input, loading, messages])
 
-    setLoading(false)
-    setTimeout(() => inputRef.current?.focus(), 50)
-  }, [input, loading, executeToolCall])
+  const resetConversation = () => {
+    setMessages([INITIAL_MESSAGE])
+    setNoKey(false)
+    onMapCommand?.({ command: 'clearSearchMarkers', args: {} })
+  }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-12 w-12 items-center justify-center border border-[#58A6FF]/45 bg-[#0D1117] text-[#58A6FF] shadow-[0_0_24px_rgba(88,166,255,0.22)] transition-colors hover:border-[#58A6FF] hover:bg-[#161B22]"
+        aria-label="AI 여행 가이드 열기"
+        title="AI 여행 가이드"
+      >
+        <MessageCircle className="h-5 w-5" />
+      </button>
+    )
   }
 
   return (
-    <div className="flex flex-col bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-      {/* 헤더 */}
-      <div
-        className="flex items-center justify-between px-3 py-2 bg-blue-600 cursor-pointer"
-        onClick={() => setCollapsed((v) => !v)}
-      >
-        <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-white" />
-          <span className="text-sm font-semibold text-white">AI 여행 가이드</span>
-          {noKey && (
-            <span className="text-[10px] bg-blue-500 text-blue-100 px-1.5 py-0.5 rounded">
-              API키 미설정
-            </span>
-          )}
+    <section className="flex h-[460px] w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border border-[#30363D] bg-[#0D1117] shadow-[0_20px_60px_rgba(0,0,0,0.42)]">
+      <header className="flex items-center justify-between border-b border-[#30363D] bg-[#161B22] px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Bot className="h-4 w-4 shrink-0 text-[#58A6FF]" />
+          <div className="min-w-0">
+            <div className="truncate text-xs font-black uppercase text-[#C9D1D9]">AI Travel Guide</div>
+            <div className="text-[10px] text-[#8B949E]">Google Maps control · last 20 messages</div>
+          </div>
+          {noKey ? <span className="border border-[#D29922]/40 px-1.5 py-0.5 text-[9px] text-[#D29922]">NO KEY</span> : null}
         </div>
-        <button className="text-blue-200 hover:text-white transition-colors">
-          {collapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={resetConversation} className="p-1.5 text-[#8B949E] hover:text-[#C9D1D9]" aria-label="대화 초기화">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={() => setOpen(false)} className="p-1.5 text-[#8B949E] hover:text-[#C9D1D9]" aria-label="AI 여행 가이드 접기">
+            <Minimize2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        {messages.map((msg, index) => <MessageBubble key={`${msg.role}-${index}`} msg={msg} />)}
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-[#8B949E]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#58A6FF]" />
+            추천지와 지도 명령을 분석 중입니다.
+          </div>
+        ) : null}
+        <div ref={messagesEndRef} />
       </div>
 
-      {!collapsed && (
-        <>
-          {/* 메시지 영역 */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0" style={{ maxHeight: '280px' }}>
-            {messages.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} />
-            ))}
-            {loading && (
-              <div className="flex justify-start gap-2">
-                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center shrink-0">
-                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-                </div>
-                <div className="bg-slate-100 border border-slate-200 text-slate-400 text-xs px-3 py-2 rounded-lg">
-                  분석 중...
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* 예시 명령어 */}
-          <div className="px-3 pb-2">
-            <div className="flex gap-1 flex-wrap">
-              {SAMPLE_COMMANDS.map((cmd) => (
-                <button
-                  key={cmd}
-                  onClick={() => { setInput(cmd); inputRef.current?.focus() }}
-                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded hover:bg-blue-100 transition-colors truncate max-w-[150px]"
-                  title={cmd}
-                >
-                  {cmd.length > 12 ? cmd.slice(0, 12) + '…' : cmd}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 입력창 */}
-          <div className="flex items-center gap-2 px-3 pb-3">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="자연어로 지도 명령..."
-              disabled={loading}
-              className="flex-1 text-xs border border-slate-200 rounded px-3 py-2 bg-slate-50 text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
-            />
+      <div className="border-t border-[#30363D] p-3">
+        <div className="mb-2 flex flex-wrap gap-1">
+          {SAMPLE_COMMANDS.map((cmd) => (
             <button
-              onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              key={cmd}
+              type="button"
+              onClick={() => {
+                setInput(cmd)
+                inputRef.current?.focus()
+              }}
+              className="max-w-[160px] truncate border border-[#30363D] bg-[#161B22] px-2 py-1 text-[10px] text-[#8B949E] hover:border-[#58A6FF]/40 hover:text-[#C9D1D9]"
+              title={cmd}
             >
-              <Send className="w-3.5 h-3.5" />
+              {cmd}
             </button>
-          </div>
-        </>
-      )}
-    </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                sendMessage()
+              }
+            }}
+            placeholder="여행지 추천 또는 지도 조정 요청..."
+            disabled={loading}
+            className="min-w-0 flex-1 border border-[#30363D] bg-[#080A0F] px-3 py-2 text-xs text-[#C9D1D9] placeholder:text-[#6E7681] focus:border-[#58A6FF]/70 focus:outline-none disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#58A6FF] text-[#0D1117] disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="메시지 보내기"
+          >
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </section>
   )
 }

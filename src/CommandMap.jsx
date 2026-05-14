@@ -199,6 +199,16 @@ function averagePoint(points) {
   }
 }
 
+function projectFallbackMapPoint(point, bounds) {
+  if (!point || !bounds) return { x: 50, y: 50 }
+  const lngSpan = Math.max(bounds.maxLng - bounds.minLng, 0.0001)
+  const latSpan = Math.max(bounds.maxLat - bounds.minLat, 0.0001)
+  return {
+    x: 8 + ((point.lng - bounds.minLng) / lngSpan) * 84,
+    y: 8 + ((bounds.maxLat - point.lat) / latSpan) * 84,
+  }
+}
+
 function getCueEntityPriority(entity) {
   if (!entity) return 0
   if (entity.type === 'meal') return 4
@@ -1177,8 +1187,8 @@ export default function CommandMap({
   const directionsAvailabilityRef = useRef('unknown')
   const placesServiceRef = useRef(null)
   const placesAvailabilityRef = useRef('unknown')
-  const [status, setStatus] = useState('loading')
-  const [statusDetail, setStatusDetail] = useState('Connecting to Google Maps...')
+  const [status, setStatus] = useState('fallback')
+  const [statusDetail, setStatusDetail] = useState('Seeded trip map online. Google Maps is connecting in the background.')
   const [mapLayerCollapsed, setMapLayerCollapsed] = useState(false)
   const [weatherCollapsed, setWeatherCollapsed] = useState(false)
   const effectiveFocusDayId =
@@ -2632,10 +2642,92 @@ export default function CommandMap({
         ? 'border-[#F85149]/30 bg-[#F85149]/10 text-[#F85149]'
         : 'border-[#58A6FF]/30 bg-[#58A6FF]/10 text-[#58A6FF]'
   const WeatherIcon = WEATHER_ICONS[mapWeather?.iconKey] || Cloud
+  const fallbackMap = useMemo(() => {
+    const routePoints = routes.flatMap((route) => route.path || [])
+    const locationPoints = locations.map((location) => location.coordinates).filter(Boolean)
+    const points = [...routePoints, ...locationPoints]
+    if (!points.length) return { bounds: null, routes: [], locations: [] }
+
+    const rawBounds = points.reduce(
+      (bounds, point) => ({
+        minLat: Math.min(bounds.minLat, point.lat),
+        maxLat: Math.max(bounds.maxLat, point.lat),
+        minLng: Math.min(bounds.minLng, point.lng),
+        maxLng: Math.max(bounds.maxLng, point.lng),
+      }),
+      { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity },
+    )
+    const latPad = Math.max((rawBounds.maxLat - rawBounds.minLat) * 0.08, 0.02)
+    const lngPad = Math.max((rawBounds.maxLng - rawBounds.minLng) * 0.08, 0.02)
+    const bounds = {
+      minLat: rawBounds.minLat - latPad,
+      maxLat: rawBounds.maxLat + latPad,
+      minLng: rawBounds.minLng - lngPad,
+      maxLng: rawBounds.maxLng + lngPad,
+    }
+
+    return {
+      bounds,
+      routes: routes
+        .filter((route) => route.path?.length > 1)
+        .map((route) => ({
+          id: route.id,
+          tone: route.tone,
+          points: route.path.map((point) => projectFallbackMapPoint(point, bounds)),
+        })),
+      locations: locations
+        .filter((location) => location.coordinates)
+        .map((location) => ({
+          id: location.id,
+          title: location.title,
+          category: location.category,
+          point: projectFallbackMapPoint(location.coordinates, bounds),
+        })),
+    }
+  }, [locations, routes])
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-[#080a0f]">
-      <div ref={containerRef} className="absolute inset-0" />
+      <div className="absolute inset-0 bg-[#080a0f]">
+        <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <radialGradient id="fallbackMapGlow" cx="50%" cy="45%" r="65%">
+              <stop offset="0%" stopColor="#102034" stopOpacity="0.92" />
+              <stop offset="100%" stopColor="#080a0f" stopOpacity="1" />
+            </radialGradient>
+          </defs>
+          <rect width="100" height="100" fill="url(#fallbackMapGlow)" />
+          {fallbackMap.routes.map((route) => (
+            <polyline
+              key={route.id}
+              points={route.points.map((point) => `${point.x},${point.y}`).join(' ')}
+              fill="none"
+              stroke={TONE_COLORS[route.tone] || TONE_COLORS.info}
+              strokeOpacity="0.54"
+              strokeWidth="0.45"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+          {fallbackMap.locations.map((location) => (
+            <circle
+              key={location.id}
+              cx={location.point.x}
+              cy={location.point.y}
+              r="0.9"
+              fill={colorForCategory(location)}
+              stroke="#E6EDF3"
+              strokeOpacity="0.72"
+              strokeWidth="0.18"
+            />
+          ))}
+        </svg>
+      </div>
+      <div
+        ref={containerRef}
+        className="absolute inset-0 transition-opacity duration-500"
+        style={{ opacity: status === 'ready' ? 1 : 0, pointerEvents: status === 'ready' ? 'auto' : 'none' }}
+      />
       <div
         className="pointer-events-none absolute inset-0 bg-[#071019] transition-opacity duration-300"
         style={{ opacity: mapUi.showTraffic ? 0.14 : 0 }}
@@ -2660,7 +2752,7 @@ export default function CommandMap({
             </div>
             <div className="flex items-center gap-2">
               <div className={`rounded-[2px] border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${badgeTone}`}>
-                {status === 'ready' ? 'Map online' : status === 'loading' ? 'Loading' : 'Attention'}
+                {status === 'ready' ? 'Map online' : status === 'fallback' ? 'Plan online' : 'Attention'}
               </div>
               <button type="button" onClick={() => setMapLayerCollapsed(true)} className="text-[#8B949E] hover:text-[#C9D1D9]">
                 <ChevronUp size={14} />
@@ -2711,7 +2803,7 @@ export default function CommandMap({
           </div>
 
           <div className="border-t border-[#30363D]/60 pt-2 text-[10px] leading-relaxed text-[#8B949E]">
-            {status === 'ready' ? summaryText : statusDetail}
+            {status === 'ready' || status === 'fallback' ? summaryText : statusDetail}
           </div>
         </div>
       )}

@@ -312,55 +312,47 @@ router.get('/detail/:contentId', async (req, res) => {
   }
 })
 
+const AREA_DATA = {
+  '1':  { name: '서울', topAttractions: [{ name: '경복궁', visitors: 5200000, congestionLevel: 'very-high' }, { name: '남산서울타워', visitors: 4100000, congestionLevel: 'very-high' }, { name: '인사동', visitors: 3400000, congestionLevel: 'high' }, { name: '광장시장', visitors: 2900000, congestionLevel: 'high' }, { name: '북촌한옥마을', visitors: 2600000, congestionLevel: 'high' }], scale: 3.2 },
+  '2':  { name: '인천', topAttractions: [{ name: '월미도', visitors: 2100000, congestionLevel: 'high' }, { name: '차이나타운', visitors: 1900000, congestionLevel: 'high' }, { name: '송도센트럴파크', visitors: 1600000, congestionLevel: 'medium' }, { name: '강화도', visitors: 1200000, congestionLevel: 'medium' }, { name: '을왕리해수욕장', visitors: 900000, congestionLevel: 'low' }], scale: 1.4 },
+  '6':  { name: '부산', topAttractions: [{ name: '해운대해수욕장', visitors: 4800000, congestionLevel: 'very-high' }, { name: '광안리해수욕장', visitors: 3600000, congestionLevel: 'high' }, { name: '자갈치시장', visitors: 2900000, congestionLevel: 'high' }, { name: '감천문화마을', visitors: 2400000, congestionLevel: 'high' }, { name: '태종대', visitors: 1800000, congestionLevel: 'medium' }], scale: 2.1 },
+  '4':  { name: '대구', topAttractions: [{ name: '동성로', visitors: 2200000, congestionLevel: 'high' }, { name: '서문시장', visitors: 1800000, congestionLevel: 'high' }, { name: '팔공산', visitors: 1500000, congestionLevel: 'medium' }, { name: '수성못', visitors: 1200000, congestionLevel: 'medium' }, { name: '김광석거리', visitors: 900000, congestionLevel: 'low' }], scale: 1.1 },
+  '31': { name: '경기도', topAttractions: [{ name: '에버랜드', visitors: 6200000, congestionLevel: 'very-high' }, { name: '수원화성', visitors: 2800000, congestionLevel: 'high' }, { name: '한국민속촌', visitors: 2100000, congestionLevel: 'high' }, { name: '가평 자라섬', visitors: 1600000, congestionLevel: 'medium' }, { name: '양평 두물머리', visitors: 1300000, congestionLevel: 'medium' }], scale: 2.6 },
+  '32': { name: '강원도', topAttractions: [{ name: '설악산국립공원', visitors: 3900000, congestionLevel: 'very-high' }, { name: '경포해수욕장', visitors: 3100000, congestionLevel: 'high' }, { name: '남이섬', visitors: 2600000, congestionLevel: 'high' }, { name: '정동진', visitors: 2000000, congestionLevel: 'medium' }, { name: '오대산', visitors: 1400000, congestionLevel: 'medium' }], scale: 1.7 },
+  '37': { name: '경상북도', topAttractions: [{ name: '불국사', visitors: 2900000, congestionLevel: 'high' }, { name: '첨성대', visitors: 2400000, congestionLevel: 'high' }, { name: '안동 하회마을', visitors: 1900000, congestionLevel: 'medium' }, { name: '주왕산', visitors: 1300000, congestionLevel: 'medium' }, { name: '독도', visitors: 800000, congestionLevel: 'low' }], scale: 1.3 },
+  '38': { name: '경상남도', topAttractions: [{ name: '통영 케이블카', visitors: 2100000, congestionLevel: 'high' }, { name: '남해 독일마을', visitors: 1600000, congestionLevel: 'medium' }, { name: '거제 해금강', visitors: 1400000, congestionLevel: 'medium' }, { name: '산청 지리산', visitors: 1100000, congestionLevel: 'medium' }, { name: '창녕 우포늪', visitors: 700000, congestionLevel: 'low' }], scale: 1.2 },
+  '35': { name: '전라북도', topAttractions: [{ name: '전주 한옥마을', visitors: 3400000, congestionLevel: 'very-high' }, { name: '내장산', visitors: 2200000, congestionLevel: 'high' }, { name: '군산 근대문화유산', visitors: 1700000, congestionLevel: 'medium' }, { name: '변산반도', visitors: 1200000, congestionLevel: 'medium' }, { name: '임실 치즈마을', visitors: 800000, congestionLevel: 'low' }], scale: 1.1 },
+  '36': { name: '전라남도', topAttractions: [{ name: '여수 밤바다', visitors: 3800000, congestionLevel: 'very-high' }, { name: '순천만국가정원', visitors: 3100000, congestionLevel: 'high' }, { name: '보성 녹차밭', visitors: 1900000, congestionLevel: 'medium' }, { name: '담양 죽녹원', visitors: 1600000, congestionLevel: 'medium' }, { name: '목포 근대역사문화공간', visitors: 1100000, congestionLevel: 'medium' }], scale: 1.6 },
+  '39': { name: '제주특별자치도', topAttractions: [{ name: '성산일출봉', visitors: 3200000, congestionLevel: 'very-high' }, { name: '한라산국립공원', visitors: 2800000, congestionLevel: 'high' }, { name: '중문관광단지', visitors: 2100000, congestionLevel: 'high' }, { name: '함덕해수욕장', visitors: 1800000, congestionLevel: 'medium' }, { name: '동문시장', visitors: 1500000, congestionLevel: 'medium' }], scale: 1.0 },
+}
+
+const BASE_MONTHLY = [890,820,1050,1280,1450,1320,1680,1920,1380,1250,980,1100].map((d,i)=>({month:`${i+1}월`,d,f:Math.round(d*0.052)}))
+
 /** GET /api/tour/stats?areaCode=39 — 방문객 통계 (mock) */
 router.get('/stats', async (req, res) => {
   const { areaCode = '39' } = req.query
-  // TourAPI 통계 API는 별도 승인 필요 — 현재는 현실적인 mock 데이터 반환
-  const mockStats = {
+  const area = AREA_DATA[areaCode] || AREA_DATA['39']
+  const scale = area.scale
+  const monthlyVisitors = BASE_MONTHLY.map(({ month, d, f }) => ({
+    month,
+    domestic: Math.round(d * scale * 1000 * (0.9 + Math.random() * 0.2)),
+    foreign: Math.round(f * scale * 1000 * (0.9 + Math.random() * 0.2)),
+  }))
+  res.json({
     areaCode,
-    areaName: areaCode === '39' ? '제주특별자치도' : '전국',
+    areaName: area.name,
     year: 2024,
-    monthlyVisitors: [
-      { month: '1월', domestic: 890000, foreign: 45000 },
-      { month: '2월', domestic: 820000, foreign: 38000 },
-      { month: '3월', domestic: 1050000, foreign: 62000 },
-      { month: '4월', domestic: 1280000, foreign: 89000 },
-      { month: '5월', domestic: 1450000, foreign: 112000 },
-      { month: '6월', domestic: 1320000, foreign: 98000 },
-      { month: '7월', domestic: 1680000, foreign: 135000 },
-      { month: '8월', domestic: 1920000, foreign: 158000 },
-      { month: '9월', domestic: 1380000, foreign: 105000 },
-      { month: '10월', domestic: 1250000, foreign: 92000 },
-      { month: '11월', domestic: 980000, foreign: 68000 },
-      { month: '12월', domestic: 1100000, foreign: 75000 },
-    ],
-    topAttractions: [
-      { name: '성산일출봉', visitors: 3200000, congestionLevel: 'very-high' },
-      { name: '한라산국립공원', visitors: 2800000, congestionLevel: 'high' },
-      { name: '중문관광단지', visitors: 2100000, congestionLevel: 'high' },
-      { name: '함덕해수욕장', visitors: 1800000, congestionLevel: 'medium' },
-      { name: '동문시장', visitors: 1500000, congestionLevel: 'medium' },
-    ],
+    monthlyVisitors,
+    topAttractions: area.topAttractions,
     hourlyPattern: [
-      { hour: 6, congestion: 15 },
-      { hour: 7, congestion: 25 },
-      { hour: 8, congestion: 45 },
-      { hour: 9, congestion: 72 },
-      { hour: 10, congestion: 88 },
-      { hour: 11, congestion: 95 },
-      { hour: 12, congestion: 92 },
-      { hour: 13, congestion: 85 },
-      { hour: 14, congestion: 80 },
-      { hour: 15, congestion: 78 },
-      { hour: 16, congestion: 70 },
-      { hour: 17, congestion: 55 },
-      { hour: 18, congestion: 40 },
-      { hour: 19, congestion: 30 },
-      { hour: 20, congestion: 20 },
+      { hour: 6, congestion: 15 }, { hour: 7, congestion: 25 }, { hour: 8, congestion: 45 },
+      { hour: 9, congestion: 72 }, { hour: 10, congestion: 88 }, { hour: 11, congestion: 95 },
+      { hour: 12, congestion: 92 }, { hour: 13, congestion: 85 }, { hour: 14, congestion: 80 },
+      { hour: 15, congestion: 78 }, { hour: 16, congestion: 70 }, { hour: 17, congestion: 55 },
+      { hour: 18, congestion: 40 }, { hour: 19, congestion: 30 }, { hour: 20, congestion: 20 },
     ],
     isMock: true,
-  }
-  res.json(mockStats)
+  })
 })
 
 export { router as tourRouter }

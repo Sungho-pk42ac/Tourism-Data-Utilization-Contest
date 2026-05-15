@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import {
   ArrowRight,
+  BarChart2,
   CarFront,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudRain,
   Download,
@@ -12,6 +15,7 @@ import {
   Globe,
   Home,
   LayoutGrid,
+  Loader2,
   Map as MapIcon,
   MapPin,
   MessageSquare,
@@ -23,6 +27,7 @@ import {
   Route,
   Search,
   Settings,
+  Sparkles,
   Star,
   Sun,
   Users,
@@ -37,6 +42,7 @@ import InspectorRail from './InspectorRail'
 import AgentChatPanel from './AgentChatPanel'
 import VisitorStatsPanel from './VisitorStatsPanel'
 import AttractionSearchPanel from './AttractionSearchPanel'
+import TripPlannerPanel from './TripPlannerPanel'
 import { PUBLISH_CONFIG, isLiveExternalDataEnabled } from './publishConfig'
 import { usePersistedTripState } from './usePersistedTripState'
 import { DAYS, NAV_ITEMS, TIME_SLOTS, TRIP_META } from './tripData'
@@ -84,6 +90,8 @@ function cn(...inputs) {
 
 const PAGE_ICONS = {
   itinerary: LayoutGrid,
+  planner: Sparkles,
+  stats: BarChart2,
   stay: Home,
   meals: Utensils,
   activities: MapIcon,
@@ -2309,6 +2317,8 @@ function ItineraryPage({
   onApplyAgentRecommendations,
   onUpdatePageNote,
   onConvertPageNote,
+  initialMapCommand,
+  onMapCommandConsumed,
   weatherDays,
   mapWeather,
   mapWeatherTargets,
@@ -2316,6 +2326,13 @@ function ItineraryPage({
   const [briefingOpen, setBriefingOpen] = useState(false)
   const [agentMapCommands, setAgentMapCommands] = useState(null)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
+
+  useEffect(() => {
+    if (initialMapCommand) {
+      setAgentMapCommands({ ...initialMapCommand, _ts: Date.now() })
+      onMapCommandConsumed?.()
+    }
+  }, [initialMapCommand])
   const [playbackCursorSlot, setPlaybackCursorSlot] = useState(null)
   const [isPlaybackPlaying, setIsPlaybackPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
@@ -2670,24 +2687,6 @@ function ItineraryPage({
               />
             </div>
 
-            {/* 방문객 통계 패널 토글 */}
-            <div>
-              <button
-                onClick={() => setShowStatsPanel((v) => !v)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
-              >
-                <span>📊 방문객 통계</span>
-                <span className="text-blue-400">{showStatsPanel ? '▲' : '▼'}</span>
-              </button>
-              {showStatsPanel && (
-                <div className="mt-2">
-                  <VisitorStatsPanel
-                    areaCode="39"
-                    onClose={() => setShowStatsPanel(false)}
-                  />
-                </div>
-              )}
-            </div>
 
           </div>
         </div>
@@ -2779,10 +2778,13 @@ function ItineraryPage({
 }
 
 function StayPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConvertPageNote }) {
-  const airbnb = getEntityById(doc, 'location', 'pine-airbnb')
+  const airbnb = getEntityById(doc, 'location', 'jeju-basecamp') ?? getEntityById(doc, 'location', 'pine-airbnb') ?? doc.locations?.[0]
   const showExternalListing = Boolean(airbnb?.externalUrl)
   const showManual = Boolean(airbnb?.manualUrl)
   const isSanitizedStay = !showExternalListing && !showManual
+  if (!airbnb) return (
+    <div className="flex flex-1 items-center justify-center text-[#8B949E] text-sm">숙박 정보가 없습니다.</div>
+  )
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,440px)_1fr] overflow-hidden">
@@ -3870,11 +3872,85 @@ function ExpensesPage({
   )
 }
 
-function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConvertPageNote }) {
+function AddFamilyModal({ onAdd, onClose }) {
+  const [name, setName] = useState('')
+  const [origin, setOrigin] = useState('')
+  const [originAddress, setOriginAddress] = useState('')
+  const [headcount, setHeadcount] = useState('')
+  const [vehicle, setVehicle] = useState('')
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    onAdd({ name, origin, originAddress, headcount, vehicle })
+    onClose()
+  }
+
+  const inputCls = 'w-full rounded border border-[#30363D] bg-[#0d1117] px-3 py-2 text-[12px] text-[#C9D1D9] placeholder-[#484f58] focus:border-[#58A6FF] focus:outline-none'
+  const labelCls = 'mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#8B949E]'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-[2px]">
+      <div className="w-full max-w-md rounded-xl border border-[#30363D] bg-[#161b22] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-[13px] font-bold text-[#C9D1D9]">새 가족 추가</div>
+          <button type="button" onClick={onClose} className="text-[#8B949E] hover:text-[#C9D1D9]">✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className={labelCls}>가족명 *</label>
+            <input className={inputCls} placeholder="예: 강씨 가족" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className={labelCls}>출신지 (코드)</label>
+            <input className={inputCls} placeholder="예: ICN, PUS, TAE" value={origin} onChange={(e) => setOrigin(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>출발지 주소</label>
+            <input className={inputCls} placeholder="예: 인천광역시 연수구" value={originAddress} onChange={(e) => setOriginAddress(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>인원</label>
+            <input className={inputCls} placeholder="예: 어른 2명, 아이 2명" value={headcount} onChange={(e) => setHeadcount(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>차량</label>
+            <input className={inputCls} placeholder="예: 렌터카 SUV" value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded border border-[#30363D] py-2 text-[11px] text-[#8B949E] hover:bg-[#21262d]">취소</button>
+            <button type="submit" className="flex-1 rounded bg-[#238636] py-2 text-[11px] font-bold text-white hover:bg-[#2ea043]">추가</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConvertPageNote, onAddFamily }) {
+  const [showAddModal, setShowAddModal] = useState(false)
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[360px_1fr] overflow-hidden">
       <div className="overflow-y-auto border-r border-[#30363D] bg-[#161b22] p-6">
-        <SectionTitle eyebrow="Travel Units" title="Family roster" />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#58A6FF]">Travel Units</div>
+            <h2 className="text-[13px] font-black uppercase tracking-[0.12em] text-[#C9D1D9]">Family roster</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="mt-1 shrink-0 flex items-center gap-1 rounded border border-[#238636] px-2.5 py-1 text-[10px] font-bold text-[#3FB950] hover:bg-[#238636]/20"
+          >
+            + 가족 추가
+          </button>
+        </div>
+        {showAddModal && (
+          <AddFamilyModal
+            onAdd={onAddFamily}
+            onClose={() => setShowAddModal(false)}
+          />
+        )}
         <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} />
         <div className="mt-5">
           <PageNotesCard
@@ -3942,6 +4018,365 @@ function withRefreshedFamilies(nextDoc) {
   }
 }
 
+const AREA_OPTIONS = [
+  { code: '39', name: '제주도' },
+  { code: '1',  name: '서울' },
+  { code: '6',  name: '부산' },
+  { code: '32', name: '강원도' },
+  { code: '36', name: '전라남도 (여수·순천)' },
+  { code: '35', name: '전라북도 (전주)' },
+  { code: '37', name: '경상북도 (경주)' },
+  { code: '38', name: '경상남도 (통영·거제)' },
+  { code: '31', name: '경기도' },
+  { code: '2',  name: '인천' },
+  { code: '4',  name: '대구' },
+]
+
+// ─── 방문객 통계 전용 페이지 ────────────────────────────────────────────────────
+function StatsPage() {
+  const [areaCode, setAreaCode] = useState('39')
+  const selectedArea = AREA_OPTIONS.find((a) => a.code === areaCode) || AREA_OPTIONS[0]
+
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-[#0d1117]">
+      <div className="flex-1 overflow-y-auto p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#58A6FF] mb-1">방문객 통계</div>
+              <div className="text-[18px] font-bold text-[#E6EDF3]">여행지 혼잡도 &amp; 방문객 현황</div>
+              <div className="text-[11px] text-[#8B949E] mt-1">실시간 관광 데이터를 확인하고 여행 일정에 참고하세요</div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black uppercase tracking-[0.15em] text-[#8B949E]">여행지 선택</label>
+              <select
+                value={areaCode}
+                onChange={(e) => setAreaCode(e.target.value)}
+                className="rounded border border-[#30363D] bg-[#161b22] px-3 py-2 text-[12px] text-[#C9D1D9] focus:border-[#58A6FF] focus:outline-none"
+              >
+                {AREA_OPTIONS.map((a) => (
+                  <option key={a.code} value={a.code}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <VisitorStatsPanel key={areaCode} areaCode={areaCode} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── AI 여행 플래너 전용 페이지 ────────────────────────────────────────────────
+function PlannerPage({ onMarkLocations }) {
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-[#0d1117]">
+      {/* Left: input */}
+      <div className="w-[360px] shrink-0 border-r border-[#30363D] overflow-y-auto p-6 space-y-5">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3FB950] mb-1">AI 여행 플래너</div>
+          <div className="text-[18px] font-bold text-[#E6EDF3]">어디로 떠나시나요?</div>
+          <div className="text-[11px] text-[#8B949E] mt-1 leading-relaxed">
+            누구랑, 어디로, 며칠 가는지 자유롭게 입력하면<br />AI가 일정·맛집·예산을 한 번에 만들어드려요
+          </div>
+        </div>
+        <PlannerInputPanel onMarkLocations={onMarkLocations} />
+      </div>
+
+      {/* Right: empty state / tips */}
+      <div className="flex-1 overflow-y-auto p-8">
+        <PlannerResultHelp />
+      </div>
+    </div>
+  )
+}
+
+function PlannerInputPanel({ onMarkLocations }) {
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+  const [activeDay, setActiveDay] = useState(0)
+  const [showBudget, setShowBudget] = useState(false)
+  const [showRestaurants, setShowRestaurants] = useState(false)
+  const [showTips, setShowTips] = useState(false)
+  const [mapScope, setMapScope] = useState('day')
+  const [mapApplied, setMapApplied] = useState(false)
+
+  const EXAMPLES = [
+    '부부 2명, 제주도, 3박 4일',
+    '가족 4명 (아이 2명), 부산, 2박 3일',
+    '친구 3명, 경주·전주, 1박 2일',
+    '혼자, 강릉, 1박 2일 카페 투어',
+  ]
+
+  async function submit(e) {
+    e?.preventDefault()
+    const q = query.trim()
+    if (!q) return
+    setLoading(true); setError(null); setResult(null); setActiveDay(0)
+    try {
+      const res = await fetch('/api/planner', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '서버 오류')
+      setResult(data.itinerary ?? data)
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
+  }
+
+  function applyMap() {
+    if (!result || !onMarkLocations) return
+    const days = mapScope === 'all' ? (result.days ?? []) : [(result.days ?? [])[activeDay]].filter(Boolean)
+    const locations = days.flatMap(d => d.slots ?? [])
+      .filter(s => s.coordinates?.lat && s.coordinates?.lng)
+      .map((s, i) => ({
+        id: `planner-${i}`,
+        title: s.name,
+        coordinates: { lat: s.coordinates.lat, lng: s.coordinates.lng },
+        address: s.address ?? '',
+        category: ({ attraction: 'activity', restaurant: 'meal', meal: 'meal', accommodation: 'stay', stay: 'stay', transport: 'logistics' })[s.type] ?? 'activity',
+      }))
+    if (!locations.length) return
+    onMarkLocations(locations)
+    setMapApplied(true)
+    setTimeout(() => setMapApplied(false), 2500)
+  }
+
+  const SLOT_COLORS = { attraction: '#58A6FF', restaurant: '#D29922', meal: '#D29922', accommodation: '#3FB950', stay: '#3FB950', transport: '#8B949E' }
+  const SLOT_LABELS = { attraction: '관광', restaurant: '식사', meal: '식사', accommodation: '숙소', stay: '숙소', transport: '이동' }
+  const BUDGET_COLORS = { 숙박: '#58A6FF', 식비: '#D29922', 교통: '#A371F7', 입장료: '#3FB950', '쇼핑/기타': '#F78166', 기타: '#8B949E', 현지교통: '#A371F7', '왕복 교통비': '#F0883E' }
+
+  return (
+    <div className="space-y-4">
+      {/* Query form */}
+      <form onSubmit={submit} className="space-y-3">
+        <textarea
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+          placeholder={'예) 부부 2명, 제주도, 3박 4일\n    가족 4명, 부산, 2박 3일 맛집 위주로'}
+          rows={3}
+          className="w-full resize-none rounded border border-[#30363D] bg-[#161b22] px-3 py-2.5 text-[12px] text-[#C9D1D9] placeholder-[#4B5563] focus:border-[#58A6FF] focus:outline-none leading-relaxed"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {EXAMPLES.map(q => (
+            <button key={q} type="button" onClick={() => setQuery(q)}
+              className="rounded-full px-2.5 py-1 text-[10px] border border-[#30363D] text-[#8B949E] bg-[#161b22] hover:border-[#58A6FF] hover:text-[#58A6FF] transition-colors">
+              {q}
+            </button>
+          ))}
+        </div>
+        <button type="submit" disabled={loading || !query.trim()}
+          className="w-full flex items-center justify-center gap-2 rounded bg-[#238636] py-2 text-[12px] font-bold text-white hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          {loading
+            ? <><Loader2 size={13} className="animate-spin" /> 일정 생성 중...</>
+            : <><Sparkles size={13} /> 여행 일정 생성</>}
+        </button>
+      </form>
+
+      {error && (
+        <div className="rounded border border-[#F85149]/40 bg-[#F85149]/10 px-3 py-2 text-[11px] text-[#F85149]">
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (
+        <div className="space-y-3">
+          {/* Summary */}
+          <div className="rounded border border-[#30363D] bg-[#161b22] px-3 py-2.5 flex items-center gap-3 flex-wrap">
+            <span className="text-[11px] font-bold text-[#58A6FF]">📍 {result.summary?.destination}</span>
+            <span className="text-[10px] text-[#8B949E]">📅 {result.summary?.days}박 {(result.summary?.days ?? 0) + 1}일</span>
+            <span className="text-[10px] text-[#8B949E]">👥 {result.summary?.travelers}</span>
+            {result.summary?.theme && <span className="text-[10px] text-[#8B949E]">🎯 {result.summary.theme}</span>}
+          </div>
+
+          {/* Budget accordion */}
+          {result.budget && (
+            <div className="rounded border border-[#30363D] bg-[#0d1117] overflow-hidden">
+              <button onClick={() => setShowBudget(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#161b22] transition-colors">
+                <span className="text-[11px] font-semibold text-[#C9D1D9]">💰 예산 상세</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[#3FB950]">
+                    {((result.budget.total ?? result.budget.grandTotal) || 0).toLocaleString()}원
+                  </span>
+                  {showBudget ? <ChevronUp size={12} className="text-[#8B949E]" /> : <ChevronDown size={12} className="text-[#8B949E]" />}
+                </div>
+              </button>
+              {showBudget && (
+                <div className="px-3 pb-3 space-y-2 border-t border-[#30363D]">
+                  <div className="text-[10px] text-[#8B949E] pt-2">1인당 {((result.budget.perPerson ?? result.budget.perPersonTotal) || 0).toLocaleString()}원</div>
+                  {Object.entries(result.budget.breakdown ?? {}).filter(([,v]) => v > 0).map(([label, amount]) => {
+                    const total = result.budget.total ?? result.budget.grandTotal ?? 1
+                    const pct = Math.round(amount / total * 100)
+                    const color = BUDGET_COLORS[label] ?? '#8B949E'
+                    return (
+                      <div key={label}>
+                        <div className="flex justify-between mb-0.5">
+                          <span className="text-[10px] text-[#C9D1D9]">{label}</span>
+                          <span className="text-[10px] font-semibold" style={{ color }}>{amount >= 10000 ? `${Math.floor(amount/10000)}만원` : `${amount}원`} ({pct}%)</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-[#21262d] overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Day tabs */}
+          <div className="rounded border border-[#30363D] bg-[#0d1117] overflow-hidden">
+            <div className="flex overflow-x-auto border-b border-[#30363D]">
+              {(result.days ?? []).map((day, i) => (
+                <button key={i} onClick={() => { setActiveDay(i); setMapApplied(false) }}
+                  className={`shrink-0 px-3 py-2 text-[11px] font-semibold transition-colors border-b-2 ${activeDay === i ? 'border-[#58A6FF] text-[#58A6FF]' : 'border-transparent text-[#8B949E] hover:text-[#C9D1D9]'}`}>
+                  {day.dayNumber}일차
+                </button>
+              ))}
+            </div>
+            {result.days?.[activeDay] && (
+              <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
+                <div className="text-[10px] font-semibold text-[#8B949E] uppercase tracking-wider">{result.days[activeDay].title}</div>
+                {(result.days[activeDay].slots ?? []).map((slot, i) => {
+                  const color = SLOT_COLORS[slot.type] ?? '#58A6FF'
+                  const label = SLOT_LABELS[slot.type] ?? '관광'
+                  return (
+                    <div key={i} className="flex gap-3 pb-2 border-b border-[#30363D]/50 last:border-0 last:pb-0">
+                      <div className="text-[9px] font-mono text-[#8B949E] w-10 shrink-0 pt-0.5">{slot.time}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="font-semibold text-[12px] text-[#E6EDF3] leading-tight">{slot.name}</span>
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: color + '22', color }}>{label}</span>
+                        </div>
+                        {slot.address && <div className="text-[10px] text-[#4B5563] mt-0.5">{slot.address}</div>}
+                        <div className="flex gap-3 mt-1 text-[10px] text-[#4B5563]">
+                          {slot.duration && slot.duration !== '-' && <span>⏱ {slot.duration}</span>}
+                          {slot.cost > 0 && <span>💳 {slot.cost >= 10000 ? `${Math.floor(slot.cost/10000)}만원` : `${slot.cost}원`}</span>}
+                        </div>
+                        {slot.tip && (
+                          <div className="mt-1.5 rounded bg-[#D29922]/10 border border-[#D29922]/20 px-2 py-1 text-[10px] text-[#D29922] leading-snug">
+                            💡 {slot.tip}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Map apply button */}
+          <div className="rounded border border-[#30363D] bg-[#0d1117] p-3 space-y-2">
+            <div className="text-[10px] font-semibold text-[#8B949E]">지도에 반영 (일정 탭으로 이동 후 표시)</div>
+            <div className="flex gap-1.5 mb-2">
+              {[['day', '이 날만'], ['all', '전체 일정']].map(([val, lbl]) => (
+                <button key={val} onClick={() => setMapScope(val)}
+                  className="flex-1 py-1 rounded text-[10px] font-semibold transition-colors border"
+                  style={{ borderColor: mapScope === val ? '#58A6FF' : '#30363D', color: mapScope === val ? '#58A6FF' : '#8B949E', background: mapScope === val ? 'rgba(88,166,255,0.1)' : 'transparent' }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <button onClick={applyMap}
+              className="w-full flex items-center justify-center gap-2 rounded py-1.5 text-[11px] font-bold transition-all"
+              style={{ background: mapApplied ? 'rgba(63,185,80,0.15)' : 'rgba(88,166,255,0.12)', border: `1px solid ${mapApplied ? '#3FB950' : '#58A6FF'}`, color: mapApplied ? '#3FB950' : '#58A6FF' }}>
+              <MapPin size={12} />
+              {mapApplied ? '✓ 일정 탭에서 확인하세요' : '지도에 반영'}
+            </button>
+          </div>
+
+          {/* Restaurants */}
+          {result.restaurants?.length > 0 && (
+            <div className="rounded border border-[#30363D] bg-[#0d1117] overflow-hidden">
+              <button onClick={() => setShowRestaurants(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#161b22] transition-colors">
+                <span className="text-[11px] font-semibold text-[#C9D1D9]">🍽 추천 맛집 {result.restaurants.length}곳</span>
+                {showRestaurants ? <ChevronUp size={12} className="text-[#8B949E]" /> : <ChevronDown size={12} className="text-[#8B949E]" />}
+              </button>
+              {showRestaurants && (
+                <div className="divide-y divide-[#30363D] border-t border-[#30363D]">
+                  {result.restaurants.map((r, i) => (
+                    <div key={i} className="px-3 py-2.5">
+                      <div className="flex items-start justify-between">
+                        <span className="font-semibold text-[12px] text-[#E6EDF3]">{r.name}</span>
+                        <span className="text-[10px] font-bold text-[#3FB950] ml-2">{r.priceRange}</span>
+                      </div>
+                      <div className="text-[10px] text-[#8B949E]">{r.cuisine} · {r.address}</div>
+                      {r.recommendation && <div className="text-[10px] text-[#D29922] mt-0.5">⭐ {r.recommendation}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tips */}
+          {result.tips?.length > 0 && (
+            <div className="rounded border border-[#30363D] bg-[#0d1117] overflow-hidden">
+              <button onClick={() => setShowTips(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#161b22] transition-colors">
+                <span className="text-[11px] font-semibold text-[#C9D1D9]">💡 여행 팁 {result.tips.length}개</span>
+                {showTips ? <ChevronUp size={12} className="text-[#8B949E]" /> : <ChevronDown size={12} className="text-[#8B949E]" />}
+              </button>
+              {showTips && (
+                <ul className="px-3 pb-3 pt-1 border-t border-[#30363D] space-y-1.5">
+                  {result.tips.map((tip, i) => (
+                    <li key={i} className="flex gap-2 text-[11px] text-[#8B949E]">
+                      <span className="text-[#D29922] shrink-0">·</span>{tip}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PlannerResultHelp() {
+  const FEATURES = [
+    { icon: '📅', title: '날짜별 일정', desc: '아침부터 저녁까지 시간대별 코스와 소요 시간' },
+    { icon: '🍽', title: '맛집 추천', desc: '현지 로컬 맛집을 음식 종류·가격대와 함께 안내' },
+    { icon: '💰', title: '예산 계산', desc: '숙박·식비·교통·입장료 항목별 예상 비용 분석' },
+    { icon: '🗺', title: '지도 반영', desc: '일정의 모든 장소를 지도에 한 번에 표시' },
+    { icon: '💡', title: '현지 팁', desc: '현지인이 알려주는 베스트 타이밍·주의사항' },
+  ]
+  return (
+    <div className="max-w-lg mx-auto pt-12">
+      <div className="text-center mb-10">
+        <div className="text-4xl mb-3">✈️</div>
+        <div className="text-[16px] font-bold text-[#E6EDF3] mb-2">AI가 만드는 나만의 여행 일정</div>
+        <div className="text-[12px] text-[#8B949E] leading-relaxed">
+          왼쪽에 누구랑, 어디로, 며칠 가는지 입력하면<br />
+          맞춤 일정부터 예산까지 한 번에 완성됩니다
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {FEATURES.map(f => (
+          <div key={f.title} className="rounded border border-[#30363D] bg-[#161b22] p-4">
+            <div className="text-xl mb-2">{f.icon}</div>
+            <div className="text-[12px] font-semibold text-[#C9D1D9] mb-1">{f.title}</div>
+            <div className="text-[11px] text-[#8B949E] leading-relaxed">{f.desc}</div>
+          </div>
+        ))}
+        <div className="rounded border border-dashed border-[#30363D] bg-transparent p-4 flex items-center justify-center">
+          <div className="text-[11px] text-[#4B5563] text-center">더 많은 기능<br />업데이트 예정</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [doc, setDoc] = usePersistedTripState(TRIP_DOCUMENT_STORAGE_KEY, getInitialTripDocument())
   const [viewerProfile, setViewerProfile] = usePersistedTripState(VIEWER_PROFILE_STORAGE_KEY, { familyId: null })
@@ -3957,6 +4392,7 @@ function App() {
     updatedAt: null,
     error: null,
   })
+  const [pendingMapCommand, setPendingMapCommand] = useState(null)
 
   const selection = displayDoc.selection
   const currentFamily = displayDoc.families.find((family) => family.id === viewerProfile?.familyId) || null
@@ -4736,6 +5172,40 @@ function App() {
     }))
   }
 
+  const addFamily = ({ name, origin, originAddress, headcount, vehicle }) => {
+    if (!name?.trim()) return
+    const id = `family-user-${Date.now()}`
+    const newFamily = {
+      id,
+      type: 'family',
+      title: name.trim(),
+      name: name.trim(),
+      shortOrigin: (origin?.trim()?.toUpperCase()?.slice(0, 3)) || 'NEW',
+      origin: origin?.trim() || '미정',
+      originAddress: originAddress?.trim() || '',
+      originCoordinates: { lat: 37.5665, lng: 126.9780 },
+      arrivalDayId: 'fri',
+      eta: '미정',
+      driveTime: '미정',
+      headcount: headcount?.trim() || '어른 2명',
+      vehicle: vehicle?.trim() || '렌터카',
+      vehicleLabel: '차량',
+      responsibility: '미정',
+      readiness: 0,
+      status: '준비 중',
+      routeSummary: '',
+      plannedStopIds: [],
+      taskIds: [],
+      linkedEntityKeys: [],
+      note: '',
+    }
+    setDoc((current) => ({
+      ...current,
+      families: [...current.families, newFamily],
+      selection: { type: 'family', id },
+    }))
+  }
+
   const applyAgentRecommendations = useCallback(({ locations = [], query = '', category = 'activity', routeId = null } = {}) => {
     setDoc((current) => {
       const scopedRoute = current.routes.find((route) => route.id === routeId) || null
@@ -5057,6 +5527,7 @@ function App() {
     onUpdatePageNote: updatePageNote,
     onConvertPageNote: convertPageNoteToTask,
     onAddActivity: addActivity,
+    onAddFamily: addFamily,
   }
 
   let content = null
@@ -5071,6 +5542,8 @@ function App() {
         weatherDays={timelineWeatherDays}
         mapWeather={mapWeather}
         mapWeatherTargets={mapWeatherTargets}
+        initialMapCommand={pendingMapCommand}
+        onMapCommandConsumed={() => setPendingMapCommand(null)}
       />
     )
   } else if (displayDoc.selectedPage === 'stay') {
@@ -5093,6 +5566,36 @@ function App() {
     )
   } else if (displayDoc.selectedPage === 'families') {
     content = <FamiliesPage {...pageProps} />
+  } else if (displayDoc.selectedPage === 'stats') {
+    content = <StatsPage />
+  } else if (displayDoc.selectedPage === 'planner') {
+    content = (
+      <PlannerPage
+        onMarkLocations={(locations) => {
+          setPendingMapCommand({ command: 'markLocations', args: { locations } })
+          setSelectedPage('itinerary')
+        }}
+      />
+    )
+  }
+
+  // planner / stats 페이지는 InspectorRail 없이 full-width
+  if (displayDoc.selectedPage === 'planner' || displayDoc.selectedPage === 'stats') {
+    return (
+      <AppShell
+        doc={displayDoc}
+        onSetSelectedPage={setSelectedPage}
+        onExport={exportState}
+        onSearchChange={updateSearchQuery}
+        searchResults={searchResults}
+        onOpenEntity={openEntity}
+        families={displayDoc.families}
+        activeFamily={currentFamily}
+        onSetActiveFamily={setActiveFamilyProfile}
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">{content}</div>
+      </AppShell>
+    )
   }
 
   const mainWithInspector = (

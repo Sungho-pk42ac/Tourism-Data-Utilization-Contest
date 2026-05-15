@@ -144,6 +144,8 @@ export const MAP_FACILITIES = [
 
 export const NAV_ITEMS = [
   { id: 'itinerary', label: '일정' },
+  { id: 'planner', label: '플래너' },
+  { id: 'stats', label: '통계' },
   { id: 'stay', label: '숙박' },
   { id: 'meals', label: '식사' },
   { id: 'activities', label: '활동' },

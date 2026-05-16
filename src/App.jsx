@@ -5339,8 +5339,7 @@ function App() {
 
       // summary.travelers에서 가족명·인원 파싱
       const travelersText = plannerResult.summary?.travelers ?? ''
-      const familyNameMatch = travelersText.match(/([가-힣]+(?:가족|팀|일행|씨)?)/)
-      const familyName = (familyNameMatch ? familyNameMatch[1] : travelersText.split(/[,，]/)[0].trim()) || 'AI 여행팀'
+      const familyName = travelersText.replace(/\s*\d+\s*(?:인|명).*$/, '').trim() || 'AI 여행팀'
       const headcountMatch = travelersText.match(/(\d+)\s*인/)
       const headcount = headcountMatch ? `${headcountMatch[1]}인` : '2인'
       const destination = plannerResult.summary?.destination ?? '여행지'

@@ -2709,6 +2709,7 @@ function ItineraryPage({
               playbackActive={isPlaybackPlaying}
               playbackHighlightLocationId={playbackHighlightLocationId}
               agentCommand={agentMapCommands}
+              customDays={weatherDays}
               onUpdateMapUi={onUpdateMapUi}
               onHydrateRouteDetails={onHydrateRouteDetails}
               onSelectEntity={onSelectEntity}
@@ -3927,8 +3928,66 @@ function AddFamilyModal({ onAdd, onClose }) {
   )
 }
 
-function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConvertPageNote, onAddFamily }) {
+function EditFamilyModal({ family, onSave, onClose }) {
+  const [name, setName] = useState(family.title || family.name || '')
+  const [origin, setOrigin] = useState(family.shortOrigin || '')
+  const [originAddress, setOriginAddress] = useState(family.originAddress || '')
+  const [headcount, setHeadcount] = useState(family.headcount || '')
+  const [vehicle, setVehicle] = useState(family.vehicle || '')
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    onSave({ name: name.trim(), origin: origin.trim(), originAddress: originAddress.trim(), headcount: headcount.trim(), vehicle: vehicle.trim() })
+    onClose()
+  }
+
+  const inputCls = 'w-full rounded border border-[#30363D] bg-[#0d1117] px-3 py-2 text-[12px] text-[#C9D1D9] placeholder-[#484f58] focus:border-[#58A6FF] focus:outline-none'
+  const labelCls = 'mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#8B949E]'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-[2px]">
+      <div className="w-full max-w-md rounded-xl border border-[#30363D] bg-[#161b22] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-[13px] font-bold text-[#C9D1D9]">가족 정보 수정</div>
+          <button type="button" onClick={onClose} className="text-[#8B949E] hover:text-[#C9D1D9]">✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className={labelCls}>가족명 *</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className={labelCls}>출신지 (코드)</label>
+            <input className={inputCls} placeholder="예: ICN, PUS" value={origin} onChange={(e) => setOrigin(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>출발지 주소</label>
+            <input className={inputCls} value={originAddress} onChange={(e) => setOriginAddress(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>인원</label>
+            <input className={inputCls} value={headcount} onChange={(e) => setHeadcount(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>차량</label>
+            <input className={inputCls} value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded border border-[#30363D] py-2 text-[11px] text-[#8B949E] hover:bg-[#21262d]">취소</button>
+            <button type="submit" className="flex-1 rounded bg-[#1F6FEB] py-2 text-[11px] font-bold text-white hover:bg-[#388bfd]">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConvertPageNote, onAddFamily, onDeleteFamily, onUpdateFamily }) {
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingFamily, setEditingFamily] = useState(null)
+  const [deletingFamilyId, setDeletingFamilyId] = useState(null)
+
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[360px_1fr] overflow-hidden">
       <div className="overflow-y-auto border-r border-[#30363D] bg-[#161b22] p-6">
@@ -3950,6 +4009,25 @@ function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConv
             onAdd={onAddFamily}
             onClose={() => setShowAddModal(false)}
           />
+        )}
+        {editingFamily && (
+          <EditFamilyModal
+            family={editingFamily}
+            onSave={(updates) => onUpdateFamily(editingFamily.id, updates)}
+            onClose={() => setEditingFamily(null)}
+          />
+        )}
+        {deletingFamilyId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-[2px]">
+            <div className="w-full max-w-sm rounded-xl border border-[#30363D] bg-[#161b22] p-6 shadow-2xl">
+              <div className="mb-3 text-[13px] font-bold text-[#C9D1D9]">가족 삭제</div>
+              <div className="mb-5 text-[12px] text-[#8B949E]">이 가족과 관련된 일정·장소도 함께 삭제됩니다. 계속하시겠습니까?</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setDeletingFamilyId(null)} className="flex-1 rounded border border-[#30363D] py-2 text-[11px] text-[#8B949E] hover:bg-[#21262d]">취소</button>
+                <button type="button" onClick={() => { onDeleteFamily(deletingFamilyId); setDeletingFamilyId(null) }} className="flex-1 rounded bg-[#b91c1c] py-2 text-[11px] font-bold text-white hover:bg-[#dc2626]">삭제</button>
+              </div>
+            </div>
+          </div>
         )}
         <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} />
         <div className="mt-5">
@@ -3981,7 +4059,25 @@ function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConv
                     <div className="text-[12px] font-black uppercase tracking-widest text-[#C9D1D9]">{family.title}</div>
                     <div className="text-[10px] text-[#8B949E]">{family.origin}</div>
                   </div>
-                  <StatusPill tone={family.status}>{family.status}</StatusPill>
+                  <div className="flex items-center gap-2">
+                    <StatusPill tone={family.status}>{family.status}</StatusPill>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setEditingFamily(family) }}
+                      className="rounded px-1.5 py-1 text-[10px] text-[#8B949E] hover:bg-[#21262d] hover:text-[#58A6FF]"
+                      title="수정"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setDeletingFamilyId(family.id) }}
+                      className="rounded px-1.5 py-1 text-[10px] text-[#8B949E] hover:bg-[#21262d] hover:text-[#f85149]"
+                      title="삭제"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
                 <div className="mb-3 h-1.5 overflow-hidden rounded-full border border-[#30363D]/30 bg-[#0d1117]">
                   <div
@@ -4659,10 +4755,14 @@ function App() {
     () => getSearchResults(displayDoc, displayDoc.ui.searchQuery),
     [displayDoc],
   )
-  const timelineWeatherDays = useMemo(
-    () => DAYS.map((day) => ({ ...day, ...getTripDayWeather(weatherState.targets, day) })),
-    [weatherState.targets],
-  )
+  const timelineWeatherDays = useMemo(() => {
+    const plannerDayTitles = doc.ui.plannerDayTitles
+    return DAYS.map((day, i) => {
+      const plannerOverride = plannerDayTitles?.[i]
+      const base = plannerOverride ? { ...day, title: plannerOverride.title, shortLabel: `${i + 1}일차` } : day
+      return { ...base, ...getTripDayWeather(weatherState.targets, day) }
+    })
+  }, [doc.ui.plannerDayTitles, weatherState.targets])
   const mapWeather = useMemo(
     () => getMapWeather(weatherState.targets, doc.ui.map.focusDayId),
     [doc.ui.map.focusDayId, weatherState.targets],
@@ -5206,6 +5306,142 @@ function App() {
     }))
   }
 
+  const deleteFamily = useCallback((familyId) => {
+    setDoc((current) => ({
+      ...current,
+      families: current.families.filter((f) => f.id !== familyId),
+      itineraryItems: current.itineraryItems.map((item) => ({
+        ...item,
+        familyIds: (item.familyIds || []).filter((id) => id !== familyId),
+      })),
+      locations: current.locations.filter((loc) => loc.familyId !== familyId),
+    }))
+  }, [setDoc])
+
+  const updateFamily = useCallback((familyId, updates) => {
+    setDoc((current) => ({
+      ...current,
+      families: current.families.map((f) =>
+        f.id === familyId
+          ? { ...f, ...updates, title: updates.name ?? f.title, name: updates.name ?? f.name }
+          : f,
+      ),
+    }))
+  }, [setDoc])
+
+  const SLOT_TYPE_CATEGORY = { attraction: 'activity', restaurant: 'meal', accommodation: 'stay', transport: 'logistics' }
+  const DAY_COLORS = ['success', 'info', 'warning', 'critical']
+
+  const applyPlannerToDoc = useCallback((plannerResult) => {
+    if (!plannerResult?.days?.length) return
+    setDoc((current) => {
+      const dayIds = DAYS.map((d) => d.id)
+
+      // summary.travelers에서 가족명·인원 파싱
+      const travelersText = plannerResult.summary?.travelers ?? ''
+      const familyNameMatch = travelersText.match(/([가-힣]+(?:가족|팀|일행|씨)?)/)
+      const familyName = (familyNameMatch ? familyNameMatch[1] : travelersText.split(/[,，]/)[0].trim()) || 'AI 여행팀'
+      const headcountMatch = travelersText.match(/(\d+)\s*인/)
+      const headcount = headcountMatch ? `${headcountMatch[1]}인` : '2인'
+      const destination = plannerResult.summary?.destination ?? '여행지'
+
+      // 동일 이름 가족 찾거나 새로 생성
+      const existing = current.families.find(
+        (f) => f.title === familyName || f.name === familyName,
+      )
+      const familyId = existing ? existing.id : `family-planner-${Date.now()}`
+      const newFamily = existing ? null : {
+        id: familyId,
+        type: 'family',
+        title: familyName,
+        name: familyName,
+        shortOrigin: destination.slice(0, 3).toUpperCase(),
+        origin: destination,
+        originAddress: '',
+        originCoordinates: { lat: 37.5665, lng: 126.9780 },
+        arrivalDayId: 'fri',
+        eta: '미정',
+        driveTime: '미정',
+        headcount,
+        vehicle: '대중교통',
+        vehicleLabel: '차량',
+        responsibility: 'AI 플래너 일정',
+        readiness: 60,
+        status: '예정',
+        routeSummary: `${destination} ${plannerResult.summary?.days ?? 0}박 여행`,
+        plannedStopIds: [],
+        taskIds: [],
+        linkedEntityKeys: [],
+        note: '',
+      }
+
+      // Main Ops 타임라인 아이템 — 해당 가족 연결
+      const plannerItems = plannerResult.days.map((day, i) => ({
+        id: `planner-ops-${familyId}-${i}`,
+        type: 'itineraryItem',
+        title: day.title || `${i + 1}일차`,
+        rowId: 'activities',
+        dayId: dayIds[i % dayIds.length],
+        startSlot: 0,
+        span: TIME_SLOTS.length,
+        color: DAY_COLORS[i % DAY_COLORS.length],
+        familyIds: [familyId],
+        status: '예정',
+        riskLevel: 'Low',
+        taskIds: [],
+        linkedEntityKeys: [],
+      }))
+
+      // 장소 — 해당 가족 연결
+      const plannerLocations = plannerResult.days.flatMap((day, dayIdx) =>
+        (day.slots ?? [])
+          .map((slot) => ({
+            lat: Number(slot.coordinates?.lat),
+            lng: Number(slot.coordinates?.lng),
+            slot,
+            dayIdx,
+          }))
+          .filter(({ lat, lng }) => Number.isFinite(lat) && Number.isFinite(lng))
+          .map(({ lat, lng, slot, dayIdx }, slotIdx) => ({
+            id: `planner-loc-${familyId}-${dayIdx}-${slotIdx}`,
+            type: 'location',
+            title: slot.name,
+            address: slot.address ?? '',
+            coordinates: { lat, lng },
+            category: SLOT_TYPE_CATEGORY[slot.type] ?? 'activity',
+            dayId: dayIds[dayIdx % dayIds.length],
+            familyId,
+            note: slot.tip ?? '',
+            linkedEntityKeys: [],
+          }))
+      )
+
+      // DAY FOCUS 탭 제목 업데이트
+      const plannerDayTitles = plannerResult.days.slice(0, dayIds.length).map((day, i) => ({
+        id: dayIds[i],
+        title: day.title || `${i + 1}일차`,
+        shortLabel: `${i + 1}일차`,
+      }))
+
+      const prevItemsFiltered = current.itineraryItems.filter(
+        (item) => !item.id.startsWith(`planner-ops-${familyId}`),
+      )
+      const prevLocsFiltered = current.locations.filter(
+        (loc) => !loc.id.startsWith(`planner-loc-${familyId}`),
+      )
+
+      return {
+        ...current,
+        families: newFamily
+          ? [...current.families, newFamily]
+          : current.families,
+        itineraryItems: [...prevItemsFiltered, ...plannerItems],
+        locations: [...prevLocsFiltered, ...plannerLocations],
+        ui: { ...current.ui, plannerDayTitles },
+      }
+    })
+  }, [setDoc])
+
   const applyAgentRecommendations = useCallback(({ locations = [], query = '', category = 'activity', routeId = null } = {}) => {
     setDoc((current) => {
       const scopedRoute = current.routes.find((route) => route.id === routeId) || null
@@ -5528,6 +5764,9 @@ function App() {
     onConvertPageNote: convertPageNoteToTask,
     onAddActivity: addActivity,
     onAddFamily: addFamily,
+    onDeleteFamily: deleteFamily,
+    onUpdateFamily: updateFamily,
+    onApplyPlannerToDoc: applyPlannerToDoc,
   }
 
   let content = null
@@ -5571,8 +5810,9 @@ function App() {
   } else if (displayDoc.selectedPage === 'planner') {
     content = (
       <PlannerPage
-        onMarkLocations={(locations) => {
+        onMarkLocations={(locations, plannerResult) => {
           setPendingMapCommand({ command: 'markLocations', args: { locations } })
+          if (plannerResult) applyPlannerToDoc(plannerResult)
           setSelectedPage('itinerary')
         }}
       />

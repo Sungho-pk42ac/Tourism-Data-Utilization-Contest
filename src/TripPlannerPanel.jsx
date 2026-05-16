@@ -141,7 +141,8 @@ export default function TripPlannerPanel({ onMarkLocations }) {
       .filter((loc) => Number.isFinite(loc.coordinates.lat) && Number.isFinite(loc.coordinates.lng))
 
     if (!locations.length) return
-    onMarkLocations(locations)
+    // 전체 result를 함께 전달해 itinerary 페이지 doc 업데이트
+    onMarkLocations(locations, result)
     setMapApplied(true)
     setTimeout(() => setMapApplied(false), 2000)
   }

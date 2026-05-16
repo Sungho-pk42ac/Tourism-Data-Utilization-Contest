@@ -1161,6 +1161,7 @@ export default function CommandMap({
   playbackActive = false,
   playbackHighlightLocationId = null,
   agentCommand = null,
+  customDays,
   onUpdateMapUi,
   onHydrateLocationDetails,
   onHydrateRouteDetails,
@@ -2288,12 +2289,13 @@ export default function CommandMap({
     markerEntriesRef.current.forEach((entry) => {
       const { location, marker, pulseMarker } = entry
       const highlightedByPlayback = playbackActive && location.id === playbackAutoLocationId
+      const familyMatches = !location.familyId || mapUi.focusFamilyId === 'all' || location.familyId === mapUi.focusFamilyId
       const visible =
         location.id === selectedLocationId ||
         highlightedByPlayback ||
-        (isFacility(location)
+        (familyMatches && (isFacility(location)
           ? mapUi.showFacilities && matchesDay(location.dayId, effectiveFocusDayId)
-          : mapUi.showRoutes && matchesDay(location.dayId, effectiveFocusDayId))
+          : mapUi.showRoutes && matchesDay(location.dayId, effectiveFocusDayId)))
 
       marker.setMap(visible ? map : null)
       entry.isPlaybackHighlighted = highlightedByPlayback
@@ -2919,7 +2921,7 @@ export default function CommandMap({
             Day Focus
           </div>
           <div className="mb-3 flex flex-wrap gap-2">
-            {[{ id: 'all', label: 'All Days' }, ...DAYS.map((day) => ({ id: day.id, label: day.title.replace(' Day', '') }))].map((item) => (
+            {[{ id: 'all', label: 'All Days' }, ...(customDays || DAYS).map((day) => ({ id: day.id, label: day.title.replace(' Day', '') }))].map((item) => (
               <MapChip
                 key={item.id}
                 active={mapUi.focusDayId === item.id}

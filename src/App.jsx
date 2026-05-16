@@ -4048,11 +4048,18 @@ function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConv
             const tasks = getTasksByFamily(doc, family.id)
             const readiness = getFamilyReadiness(doc, family.id)
             return (
-              <SelectableCard
+              <div
                 key={family.id}
-                selected={selection.type === 'family' && selection.id === family.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectEntity('family', family.id)}
-                className="p-4"
+                onKeyDown={(e) => e.key === 'Enter' && onSelectEntity('family', family.id)}
+                className={cn(
+                  'w-full cursor-pointer border p-4 text-left transition-colors hover:border-[#58A6FF]/40 hover:bg-[#1f2a34]/40',
+                  selection.type === 'family' && selection.id === family.id
+                    ? 'border-[#58A6FF] bg-[#24313d]/60'
+                    : 'border-[#30363D] bg-[#161b22]',
+                )}
               >
                 <div className="mb-3 flex items-center justify-between">
                   <div>
@@ -4095,7 +4102,7 @@ function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConv
                     </div>
                   ))}
                 </div>
-              </SelectableCard>
+              </div>
             )
           })}
         </div>
@@ -4227,16 +4234,16 @@ function PlannerInputPanel({ onMarkLocations }) {
     if (!result || !onMarkLocations) return
     const days = mapScope === 'all' ? (result.days ?? []) : [(result.days ?? [])[activeDay]].filter(Boolean)
     const locations = days.flatMap(d => d.slots ?? [])
-      .filter(s => s.coordinates?.lat && s.coordinates?.lng)
       .map((s, i) => ({
         id: `planner-${i}`,
         title: s.name,
-        coordinates: { lat: s.coordinates.lat, lng: s.coordinates.lng },
+        coordinates: { lat: Number(s.coordinates?.lat), lng: Number(s.coordinates?.lng) },
         address: s.address ?? '',
         category: ({ attraction: 'activity', restaurant: 'meal', meal: 'meal', accommodation: 'stay', stay: 'stay', transport: 'logistics' })[s.type] ?? 'activity',
       }))
+      .filter(s => Number.isFinite(s.coordinates.lat) && Number.isFinite(s.coordinates.lng))
     if (!locations.length) return
-    onMarkLocations(locations)
+    onMarkLocations(locations, result)
     setMapApplied(true)
     setTimeout(() => setMapApplied(false), 2500)
   }

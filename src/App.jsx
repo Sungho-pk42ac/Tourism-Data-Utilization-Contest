@@ -444,8 +444,8 @@ function getFamilyExpenseBurden(expenses, families) {
   }))
 }
 
-function clampTimelineCursor(slot) {
-  const maxCursor = DAYS.length * TIME_SLOTS.length - 0.001
+function clampTimelineCursor(slot, dayCount = DAYS.length) {
+  const maxCursor = dayCount * TIME_SLOTS.length - 0.001
   return Math.min(Math.max(slot, 0), maxCursor)
 }
 
@@ -1107,10 +1107,11 @@ function FamilyList({ doc, selection, focusFamilyId = 'all', onSelectEntity, onD
   )
 }
 
-function ScenarioControls({ doc, cursorSlot = doc.ui.timeline.cursorSlot, onSetCursor }) {
-  const clampedCursor = clampTimelineCursor(cursorSlot)
-  const cursorDayIndex = Math.min(Math.max(Math.floor(clampedCursor / TIME_SLOTS.length), 0), DAYS.length - 1)
-  const selectedDay = DAYS[cursorDayIndex]
+function ScenarioControls({ doc, days: propDays, cursorSlot = doc.ui.timeline.cursorSlot, onSetCursor }) {
+  const days = propDays?.length ? propDays : DAYS
+  const clampedCursor = clampTimelineCursor(cursorSlot, days.length)
+  const cursorDayIndex = Math.min(Math.max(Math.floor(clampedCursor / TIME_SLOTS.length), 0), days.length - 1)
+  const selectedDay = days[cursorDayIndex]
   const cursorHour = getCursorHourInDay(clampedCursor)
   const selectedHour = MISSION_TIME_PRESETS.reduce((bestHour, hour) => (
     Math.abs(hour - cursorHour) < Math.abs(bestHour - cursorHour) ? hour : bestHour
@@ -1133,7 +1134,7 @@ function ScenarioControls({ doc, cursorSlot = doc.ui.timeline.cursorSlot, onSetC
         </div>
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
-        {DAYS.map((day, dayIndex) => (
+        {days.map((day, dayIndex) => (
           <button
             key={day.id}
             type="button"
@@ -1849,6 +1850,11 @@ function TimelineBoard({
               const rowItems = doc.itineraryItems.filter((item) => {
                 if (item.rowId !== row.id) return false
                 if (focusFamilyId === 'all') return true
+                if (row.id === 'travel') {
+                  // TRANSIT: strict — 해당 가족 아이템만 (덮어쓰기 방지)
+                  return item.familyIds?.includes(focusFamilyId) ?? false
+                }
+                // MAIN OPS, SUPPORT: lenient — 글로벌(familyIds 없음) 아이템 + 해당 가족 아이템
                 return !item.familyIds?.length || item.familyIds.includes(focusFamilyId)
               })
               const visibleFamilies = focusFamilyId === 'all'
@@ -2372,6 +2378,27 @@ function ItineraryPage({
   const [agentMapCommands, setAgentMapCommands] = useState(null)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
 
+  // 실제 일정 아이템의 최대 dayIdx를 기반으로 총 일수 동적 계산
+  const effectiveDays = useMemo(() => {
+    const baseDays = weatherDays?.length ? weatherDays : DAYS
+    const maxDayIdx = doc.itineraryItems.reduce((max, item) => {
+      if (item.startSlot == null) return max
+      return Math.max(max, Math.floor(item.startSlot / TIME_SLOTS.length))
+    }, baseDays.length - 1)
+    if (maxDayIdx < baseDays.length) return baseDays
+    return Array.from({ length: maxDayIdx + 1 }, (_, i) =>
+      baseDays[i] ?? {
+        id: `day-${i + 1}`,
+        title: `${i + 1}일차`,
+        shortLabel: `D${i + 1}`,
+        weather: '—',
+        temperature: '—',
+        weatherLocation: '',
+        weatherIconKey: 'clear',
+      }
+    )
+  }, [doc.itineraryItems, weatherDays])
+
   useEffect(() => {
     if (initialMapCommand) {
       setAgentMapCommands({ ...initialMapCommand, _ts: Date.now() })
@@ -2628,7 +2655,7 @@ function ItineraryPage({
 
   const handleTimelineCursorChange = useCallback(
     (slot) => {
-      const nextCursor = clampTimelineCursor(slot)
+      const nextCursor = clampTimelineCursor(slot, effectiveDays.length)
       setOperationGate(null)
       setOperationGateRemainingMs(0)
       operationGateRef.current = null
@@ -2646,7 +2673,7 @@ function ItineraryPage({
       setPlaybackCursorSlot(null)
       onSetCursor(nextCursor)
     },
-    [armOperationCheckpointsFromCursor, clearMissionFeed, isPlaybackPlaying, onSetCursor],
+    [armOperationCheckpointsFromCursor, clearMissionFeed, effectiveDays.length, isPlaybackPlaying, onSetCursor],
   )
 
   const handleTogglePlayback = useCallback(() => {
@@ -2742,7 +2769,7 @@ function ItineraryPage({
               <FamilyList doc={doc} selection={selection} focusFamilyId={focusFamilyId} onSelectEntity={handleSelectFamilyWithFocus} onDeleteFamily={onDeleteFamily} />
             </div>
             <div>
-              <ScenarioControls doc={doc} cursorSlot={effectiveCursorSlot} onSetCursor={handleTimelineCursorChange} />
+              <ScenarioControls doc={doc} days={effectiveDays} cursorSlot={effectiveCursorSlot} onSetCursor={handleTimelineCursorChange} />
             </div>
             <div>
               <PageNotesCard
@@ -2811,7 +2838,7 @@ function ItineraryPage({
               selection={selection}
               onSelectEntity={onSelectEntity}
               onSetCursor={handleTimelineCursorChange}
-              weatherDays={weatherDays}
+              weatherDays={effectiveDays}
               cursorSlot={effectiveCursorSlot}
               isPlaying={isPlaybackPlaying}
               playbackSpeed={playbackSpeed}

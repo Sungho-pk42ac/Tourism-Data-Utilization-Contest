@@ -1041,31 +1041,58 @@ function AppShell({
   )
 }
 
-function FamilyList({ doc, selection, onSelectEntity }) {
+function FamilyList({ doc, selection, onSelectEntity, onDeleteFamily }) {
+  const [deletingId, setDeletingId] = useState(null)
   return (
     <div className="overflow-hidden border border-[#30363D] bg-[#0d1117]">
+      {deletingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-[2px]">
+          <div className="w-full max-w-sm rounded-xl border border-[#30363D] bg-[#161b22] p-6 shadow-2xl">
+            <div className="mb-3 text-[13px] font-bold text-[#C9D1D9]">가족 삭제</div>
+            <div className="mb-5 text-[12px] text-[#8B949E]">이 가족과 관련된 일정·장소도 함께 삭제됩니다. 계속하시겠습니까?</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setDeletingId(null)} className="flex-1 rounded border border-[#30363D] py-2 text-[11px] text-[#8B949E] hover:bg-[#21262d]">취소</button>
+              <button type="button" onClick={() => { onDeleteFamily?.(deletingId); setDeletingId(null) }} className="flex-1 rounded bg-[#b91c1c] py-2 text-[11px] font-bold text-white hover:bg-[#dc2626]">삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
       {doc.families.map((family) => {
         const selected = selection.type === 'family' && selection.id === family.id
         return (
-          <button
+          <div
             key={family.id}
-            type="button"
-            onClick={() => onSelectEntity('family', family.id)}
             className={cn(
-              'flex w-full items-start justify-between gap-3 border-b border-[#30363D]/50 px-4 py-3 text-left last:border-b-0',
+              'group flex w-full items-center justify-between gap-2 border-b border-[#30363D]/50 px-4 py-3 text-left last:border-b-0',
               selected ? 'bg-[#24313d] shadow-[inset_4px_0_0_#58A6FF]' : 'hover:bg-[#1f2a34]/60',
             )}
           >
-            <div>
+            <button
+              type="button"
+              onClick={() => onSelectEntity('family', family.id)}
+              className="min-w-0 flex-1 text-left"
+            >
               <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-[#C9D1D9]">
                 {family.title}
               </div>
               <div className="text-[10px] font-medium text-[#8B949E]">
                 {family.shortOrigin} inbound, {family.headcount}
               </div>
+            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <StatusPill tone={family.status}>{family.status}</StatusPill>
+              {onDeleteFamily && (
+                <button
+                  type="button"
+                  onClick={() => setDeletingId(family.id)}
+                  className="rounded px-1.5 py-1 text-[10px] text-[#484f58] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[#21262d] hover:text-[#f85149]"
+                  title="삭제"
+                >
+                  ✕
+                </button>
+              )}
             </div>
-            <StatusPill tone={family.status}>{family.status}</StatusPill>
-          </button>
+          </div>
         )
       })}
     </div>
@@ -2317,6 +2344,7 @@ function ItineraryPage({
   onApplyAgentRecommendations,
   onUpdatePageNote,
   onConvertPageNote,
+  onDeleteFamily,
   initialMapCommand,
   onMapCommandConsumed,
   weatherDays,
@@ -2672,7 +2700,7 @@ function ItineraryPage({
             <SituationBoard context={context} onOpenEntity={onOpenEntity} onOpenBriefing={handleOpenBriefing} />
             <div>
               <SectionTitle eyebrow="Response Plans" title="Travel units" meta={`${doc.families.length} families`} />
-              <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} />
+              <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} onDeleteFamily={onDeleteFamily} />
             </div>
             <div>
               <ScenarioControls doc={doc} cursorSlot={effectiveCursorSlot} onSetCursor={handleTimelineCursorChange} />
@@ -4029,7 +4057,7 @@ function FamiliesPage({ doc, selection, onSelectEntity, onUpdatePageNote, onConv
             </div>
           </div>
         )}
-        <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} />
+        <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} onDeleteFamily={onDeleteFamily} />
         <div className="mt-5">
           <PageNotesCard
             title="Families note"

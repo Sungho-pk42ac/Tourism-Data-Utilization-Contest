@@ -1681,10 +1681,16 @@ function TimelineBoard({
   const draggingRef = useRef(false)
   const [liveNow, setLiveNow] = useState(() => new Date())
   const [hoverCursorSlot, setHoverCursorSlot] = useState(null)
+  const timelineFocusFamilyId = doc.ui?.map?.focusFamilyId ?? 'all'
+  const timelineVisibleFamilies = timelineFocusFamilyId === 'all'
+    ? doc.families
+    : doc.families.filter((f) => f.id === timelineFocusFamilyId)
+  const timelineLaneCount = Math.max(timelineVisibleFamilies.length, 1)
+  const PER_LANE = { travel: 26, activities: 28, support: 26 }
   const rowHeights = {
-    travel: 72,
-    activities: 44,
-    support: 44,
+    travel: PER_LANE.travel * timelineLaneCount,
+    activities: PER_LANE.activities * timelineLaneCount,
+    support: PER_LANE.support * timelineLaneCount,
   }
   const rows = [
     { id: 'travel', label: 'Transit' },
@@ -1846,19 +1852,13 @@ function TimelineBoard({
 
           <div className="absolute inset-0">
             {rowLayouts.map((row) => {
-              const focusFamilyId = doc.ui?.map?.focusFamilyId ?? 'all'
               const rowItems = doc.itineraryItems.filter((item) => {
                 if (item.rowId !== row.id) return false
-                if (focusFamilyId === 'all') return true
-                // 포커스 시 모든 행 strict: 해당 가족에 명시적으로 태그된 아이템만
-                return item.familyIds?.includes(focusFamilyId) ?? false
+                if (timelineFocusFamilyId === 'all') return true
+                return item.familyIds?.includes(timelineFocusFamilyId) ?? false
               })
-              const visibleFamilies = focusFamilyId === 'all'
-                ? doc.families
-                : doc.families.filter((f) => f.id === focusFamilyId)
-              const laneCount = row.id === 'travel' ? Math.max(visibleFamilies.length, 1) : 1
-              const laneHeight = row.height / laneCount
-              const laneFamilyMap = new Map(visibleFamilies.map((f, i) => [f.id, i]))
+              const laneHeight = row.height / timelineLaneCount
+              const laneFamilyMap = new Map(timelineVisibleFamilies.map((f, i) => [f.id, i]))
 
               return (
                 <div
@@ -1866,15 +1866,13 @@ function TimelineBoard({
                   className="absolute left-0 right-0 border-b border-[#30363D]/30 last:border-b-0"
                   style={{ top: `${row.top}px`, height: `${row.height}px` }}
                 >
-                  {row.id === 'travel'
-                    ? visibleFamilies.slice(1).map((_, index) => (
-                        <div
-                          key={`travel-divider-${index}`}
-                          className="absolute left-0 right-0 border-t border-[#30363D]/20"
-                          style={{ top: `${laneHeight * (index + 1)}px` }}
-                        />
-                      ))
-                    : null}
+                  {timelineVisibleFamilies.slice(1).map((_, index) => (
+                    <div
+                      key={`${row.id}-divider-${index}`}
+                      className="absolute left-0 right-0 border-t border-[#30363D]/20"
+                      style={{ top: `${laneHeight * (index + 1)}px` }}
+                    />
+                  ))}
 
                   {rowItems.map((item) => {
                     const itemSpan = getItineraryItemEffectiveSpan(doc, item)
@@ -1884,10 +1882,9 @@ function TimelineBoard({
                     const clippedStart = Math.max(item.startSlot, visibleRange.start)
                     const clippedEnd = Math.min(itemEnd, visibleRange.end)
                     if (clippedEnd <= clippedStart) return null
-                    const laneIndex =
-                      row.id === 'travel' ? laneFamilyMap.get(item.familyIds?.[0]) ?? familyLaneMap.get(item.familyIds?.[0]) ?? 0 : 0
-                    const itemTop = row.id === 'travel' ? laneIndex * laneHeight + 2 : 6
-                    const itemHeight = row.id === 'travel' ? laneHeight - 4 : row.height - 12
+                    const laneIndex = laneFamilyMap.get(item.familyIds?.[0]) ?? familyLaneMap.get(item.familyIds?.[0]) ?? 0
+                    const itemTop = laneIndex * laneHeight + 2
+                    const itemHeight = laneHeight - 4
                     const selected = selection.type === item.type && selection.id === item.id
                     const compactTravelItem = row.id === 'travel' && itemSpan <= 0.22
                     const shortTravelItem = row.id === 'travel' && itemSpan <= 0.42

@@ -2374,15 +2374,20 @@ function ItineraryPage({
   const [agentMapCommands, setAgentMapCommands] = useState(null)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
 
-  // 실제 일정 아이템의 최대 dayIdx를 기반으로 총 일수 동적 계산
+  // 포커스된 가족(또는 전체)의 아이템 기준으로 총 일수 동적 계산
+  const _focusFamilyIdForDays = doc.ui?.map?.focusFamilyId ?? 'all'
   const effectiveDays = useMemo(() => {
     const baseDays = weatherDays?.length ? weatherDays : DAYS
-    const maxDayIdx = doc.itineraryItems.reduce((max, item) => {
+    const relevantItems = _focusFamilyIdForDays === 'all'
+      ? doc.itineraryItems
+      : doc.itineraryItems.filter((item) => item.familyIds?.includes(_focusFamilyIdForDays))
+    const maxDayIdx = relevantItems.reduce((max, item) => {
       if (item.startSlot == null) return max
       return Math.max(max, Math.floor(item.startSlot / TIME_SLOTS.length))
-    }, baseDays.length - 1)
-    if (maxDayIdx < baseDays.length) return baseDays
-    return Array.from({ length: maxDayIdx + 1 }, (_, i) =>
+    }, _focusFamilyIdForDays === 'all' ? baseDays.length - 1 : 0)
+    const totalDays = Math.max(maxDayIdx + 1, _focusFamilyIdForDays === 'all' ? baseDays.length : 1)
+    if (totalDays <= baseDays.length) return baseDays.slice(0, totalDays)
+    return Array.from({ length: totalDays }, (_, i) =>
       baseDays[i] ?? {
         id: `day-${i + 1}`,
         title: `${i + 1}일차`,
@@ -2393,7 +2398,7 @@ function ItineraryPage({
         weatherIconKey: 'clear',
       }
     )
-  }, [doc.itineraryItems, weatherDays])
+  }, [doc.itineraryItems, weatherDays, _focusFamilyIdForDays])
 
   useEffect(() => {
     if (initialMapCommand) {

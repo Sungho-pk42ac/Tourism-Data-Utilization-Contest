@@ -1850,12 +1850,8 @@ function TimelineBoard({
               const rowItems = doc.itineraryItems.filter((item) => {
                 if (item.rowId !== row.id) return false
                 if (focusFamilyId === 'all') return true
-                if (row.id === 'travel') {
-                  // TRANSIT: strict — 해당 가족 아이템만 (덮어쓰기 방지)
-                  return item.familyIds?.includes(focusFamilyId) ?? false
-                }
-                // MAIN OPS, SUPPORT: lenient — 글로벌(familyIds 없음) 아이템 + 해당 가족 아이템
-                return !item.familyIds?.length || item.familyIds.includes(focusFamilyId)
+                // 포커스 시 모든 행 strict: 해당 가족에 명시적으로 태그된 아이템만
+                return item.familyIds?.includes(focusFamilyId) ?? false
               })
               const visibleFamilies = focusFamilyId === 'all'
                 ? doc.families
@@ -5482,7 +5478,7 @@ function App() {
         title: day.title || `${i + 1}일차`,
         rowId: 'activities',
         dayId: dayIds[i % dayIds.length],
-        startSlot: 0,
+        startSlot: i * TIME_SLOTS.length,
         span: TIME_SLOTS.length,
         color: DAY_COLORS[i % DAY_COLORS.length],
         familyIds: [familyId],

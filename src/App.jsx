@@ -1041,7 +1041,7 @@ function AppShell({
   )
 }
 
-function FamilyList({ doc, selection, onSelectEntity, onDeleteFamily }) {
+function FamilyList({ doc, selection, focusFamilyId = 'all', onSelectEntity, onDeleteFamily }) {
   const [deletingId, setDeletingId] = useState(null)
   return (
     <div className="overflow-hidden border border-[#30363D] bg-[#0d1117]">
@@ -1059,12 +1059,13 @@ function FamilyList({ doc, selection, onSelectEntity, onDeleteFamily }) {
       )}
       {doc.families.map((family) => {
         const selected = selection.type === 'family' && selection.id === family.id
+        const focused = focusFamilyId === family.id
         return (
           <div
             key={family.id}
             className={cn(
               'group flex w-full items-center justify-between gap-2 border-b border-[#30363D]/50 px-4 py-3 text-left last:border-b-0',
-              selected ? 'bg-[#24313d] shadow-[inset_4px_0_0_#58A6FF]' : 'hover:bg-[#1f2a34]/60',
+              focused ? 'bg-[#1a2a1a] shadow-[inset_4px_0_0_#3fb950]' : selected ? 'bg-[#24313d] shadow-[inset_4px_0_0_#58A6FF]' : 'hover:bg-[#1f2a34]/60',
             )}
           >
             <button
@@ -1072,8 +1073,15 @@ function FamilyList({ doc, selection, onSelectEntity, onDeleteFamily }) {
               onClick={() => onSelectEntity('family', family.id)}
               className="min-w-0 flex-1 text-left"
             >
-              <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-[#C9D1D9]">
-                {family.title}
+              <div className="mb-1 flex items-center gap-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-[#C9D1D9]">
+                  {family.title}
+                </span>
+                {focused && (
+                  <span className="rounded-[2px] bg-[#3fb950]/20 px-1 py-0.5 text-[8px] font-black uppercase tracking-widest text-[#3fb950]">
+                    FOCUS
+                  </span>
+                )}
               </div>
               <div className="text-[10px] font-medium text-[#8B949E]">
                 {family.shortOrigin} inbound, {family.headcount}
@@ -1837,9 +1845,18 @@ function TimelineBoard({
 
           <div className="absolute inset-0">
             {rowLayouts.map((row) => {
-              const rowItems = doc.itineraryItems.filter((item) => item.rowId === row.id)
-              const laneCount = row.id === 'travel' ? Math.max(doc.families.length, 1) : 1
+              const focusFamilyId = doc.ui?.map?.focusFamilyId ?? 'all'
+              const rowItems = doc.itineraryItems.filter((item) => {
+                if (item.rowId !== row.id) return false
+                if (focusFamilyId === 'all') return true
+                return !item.familyIds?.length || item.familyIds.includes(focusFamilyId)
+              })
+              const visibleFamilies = focusFamilyId === 'all'
+                ? doc.families
+                : doc.families.filter((f) => f.id === focusFamilyId)
+              const laneCount = row.id === 'travel' ? Math.max(visibleFamilies.length, 1) : 1
               const laneHeight = row.height / laneCount
+              const laneFamilyMap = new Map(visibleFamilies.map((f, i) => [f.id, i]))
 
               return (
                 <div
@@ -1848,7 +1865,7 @@ function TimelineBoard({
                   style={{ top: `${row.top}px`, height: `${row.height}px` }}
                 >
                   {row.id === 'travel'
-                    ? doc.families.slice(1).map((_, index) => (
+                    ? visibleFamilies.slice(1).map((_, index) => (
                         <div
                           key={`travel-divider-${index}`}
                           className="absolute left-0 right-0 border-t border-[#30363D]/20"
@@ -1866,7 +1883,7 @@ function TimelineBoard({
                     const clippedEnd = Math.min(itemEnd, visibleRange.end)
                     if (clippedEnd <= clippedStart) return null
                     const laneIndex =
-                      row.id === 'travel' ? familyLaneMap.get(item.familyIds?.[0]) ?? 0 : 0
+                      row.id === 'travel' ? laneFamilyMap.get(item.familyIds?.[0]) ?? familyLaneMap.get(item.familyIds?.[0]) ?? 0 : 0
                     const itemTop = row.id === 'travel' ? laneIndex * laneHeight + 2 : 6
                     const itemHeight = row.id === 'travel' ? laneHeight - 4 : row.height - 12
                     const selected = selection.type === item.type && selection.id === item.id
@@ -2692,6 +2709,16 @@ function ItineraryPage({
     setBriefingOpen(true)
   }, [dailyBriefing?.day?.id, effectiveCursorSlot])
 
+  const focusFamilyId = doc.ui?.map?.focusFamilyId ?? 'all'
+
+  const handleSelectFamilyWithFocus = useCallback((type, id) => {
+    onSelectEntity(type, id)
+    if (type === 'family') {
+      const currentFocus = doc.ui?.map?.focusFamilyId ?? 'all'
+      onUpdateMapUi({ focusFamilyId: currentFocus === id ? 'all' : id })
+    }
+  }, [onSelectEntity, onUpdateMapUi, doc.ui?.map?.focusFamilyId])
+
   return (
     <>
       <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] overflow-hidden">
@@ -2699,8 +2726,20 @@ function ItineraryPage({
           <div className="space-y-4 p-4">
             <SituationBoard context={context} onOpenEntity={onOpenEntity} onOpenBriefing={handleOpenBriefing} />
             <div>
-              <SectionTitle eyebrow="Response Plans" title="Travel units" meta={`${doc.families.length} families`} />
-              <FamilyList doc={doc} selection={selection} onSelectEntity={onSelectEntity} onDeleteFamily={onDeleteFamily} />
+              <div className="flex items-center justify-between">
+                <SectionTitle eyebrow="Response Plans" title="Travel units" meta={`${doc.families.length} families`} />
+                {focusFamilyId !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateMapUi({ focusFamilyId: 'all' })}
+                    className="shrink-0 rounded border border-[#3fb950]/30 bg-[#3fb950]/10 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#3fb950] hover:bg-[#3fb950]/20"
+                    title="전체 보기로 초기화"
+                  >
+                    ✕ ALL
+                  </button>
+                )}
+              </div>
+              <FamilyList doc={doc} selection={selection} focusFamilyId={focusFamilyId} onSelectEntity={handleSelectFamilyWithFocus} onDeleteFamily={onDeleteFamily} />
             </div>
             <div>
               <ScenarioControls doc={doc} cursorSlot={effectiveCursorSlot} onSetCursor={handleTimelineCursorChange} />
